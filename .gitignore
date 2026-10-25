@@ -1,0 +1,9 @@
+.DS_Store
+node_modules/
+.env
+.env.local
+backend/convex/_generated/
+video/raw/**
+!video/raw/.gitkeep
+video/export/**
+!video/export/.gitkeep
