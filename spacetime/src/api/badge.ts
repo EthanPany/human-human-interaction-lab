@@ -22,7 +22,7 @@ export function state({ tx }: Ctx, args: Record<string, unknown>) {
     closeness: 0,
     conversationId: undefined as string | undefined,
     recordConversations: me?.recordConversations ?? true,
-    californiaMode: me?.californiaMode ?? true,
+    californiaMode: me?.californiaMode ?? false,
   };
   if (!me) return base;
 
