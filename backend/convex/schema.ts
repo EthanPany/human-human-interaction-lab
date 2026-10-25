@@ -17,7 +17,9 @@ export default defineSchema({
     phone: v.string(),
     password: v.optional(v.string()), // demo only, plain text, optional
     name: v.optional(v.string()),
-    headline: v.optional(v.string()),
+    headline: v.optional(v.string()), // role or title, e.g. "Brand marketer"
+    company: v.optional(v.string()),
+    location: v.optional(v.string()), // e.g. "Vancouver, BC"
     tags: v.optional(v.array(v.string())), // badge tags: role, who you are, what you know
     lookingFor: v.optional(v.string()), // who I want to meet
     offers: v.optional(v.string()), // what I can help with
@@ -26,7 +28,29 @@ export default defineSchema({
     californiaMode: v.optional(v.boolean()),
     recordConversations: v.optional(v.boolean()),
     lastSeenAt: v.optional(v.number()), // last time the app reported in
-  }).index("by_phone", ["phone"]),
+    profileUpdatedAt: v.optional(v.number()), // debounces re-scoring
+
+    // How the badge looks (see lib/avatar.ts)
+    avatarShape: v.optional(v.string()), // blob | puzzle | circle | triangle | square | pill | flower
+    avatarColor: v.optional(v.string()), // "#RRGGBB"
+    badgeLayout: v.optional(v.string()), // avatar | photo | photoText
+    photoId: v.optional(v.id("_storage")),
+
+    // Semantic retrieval (optional, only with VOYAGE_API_KEY, see lib/embeddings.ts)
+    seekEmbedding: v.optional(v.array(v.float64())), // who I want to meet
+    aboutEmbedding: v.optional(v.array(v.float64())), // who I am and what I offer
+  })
+    .index("by_phone", ["phone"])
+    .vectorIndex("by_about", { vectorField: "aboutEmbedding", dimensions: 1024 })
+    .vectorIndex("by_seek", { vectorField: "seekEmbedding", dimensions: 1024 }),
+
+  // Photos on a profile ("moments"), shown with hobbies in the Interests block
+  moments: defineTable({
+    owner: v.id("users"),
+    photoId: v.id("_storage"),
+    caption: v.optional(v.string()),
+    at: v.number(),
+  }).index("by_owner", ["owner", "at"]),
 
   // Nearby Interaction discovery tokens. Every NISession has its own token, so a
   // phone makes one session per peer and publishes that session's token for them.

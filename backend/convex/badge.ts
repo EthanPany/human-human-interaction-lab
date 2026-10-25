@@ -2,6 +2,7 @@ import { query } from "./_generated/server";
 import { v } from "convex/values";
 import { loadRubric } from "./lib/rubric";
 import { otherOf, pairColor } from "./lib/pairs";
+import { avatarOf } from "./lib/avatar";
 import { GLOW_RANGE_M, PROXIMITY_FRESH_MS, TALK_AFTER_MS, TALK_DISTANCE_M } from "./lib/constants";
 
 /**
@@ -12,6 +13,8 @@ import { GLOW_RANGE_M, PROXIMITY_FRESH_MS, TALK_AFTER_MS, TALK_DISTANCE_M } from
  * glow:      0..1, stronger as the matched person gets closer
  * color:     shared match color (same on both badges)
  * frontTag:  MY tag that the nearby person cares about most (moves to the front)
+ * closeness: 0..1 from distance alone (1 = talking distance), drives the avatar tint
+ * peer*:     who it is, and their avatar, so the two avatars can meet on screen
  */
 export const state = query({
   args: { userId: v.id("users") },
@@ -24,6 +27,9 @@ export const state = query({
       frontTag: undefined as string | undefined,
       peerId: undefined as string | undefined,
       peerName: undefined as string | undefined,
+      peerAvatarShape: undefined as string | undefined,
+      peerAvatarColor: undefined as string | undefined,
+      closeness: 0,
       conversationId: undefined as string | undefined,
       recordConversations: me?.recordConversations ?? true,
       californiaMode: me?.californiaMode ?? true,
@@ -71,6 +77,7 @@ export const state = query({
       openConversation.endedAt === undefined;
 
     const proximity = Math.max(0, Math.min(1, (GLOW_RANGE_M - best.row.meters) / (GLOW_RANGE_M - TALK_DISTANCE_M)));
+    const peerAvatar = peer ? avatarOf(peer) : undefined;
     return {
       ...base,
       mode: talking ? "talking" : connection ? "connected" : "match",
@@ -79,6 +86,9 @@ export const state = query({
       frontTag: theirView?.tag,
       peerId,
       peerName: peer?.name,
+      peerAvatarShape: peerAvatar?.shape,
+      peerAvatarColor: peerAvatar?.color,
+      closeness: talking ? 1 : proximity,
       conversationId: talking ? openConversation?._id : undefined,
     };
   },

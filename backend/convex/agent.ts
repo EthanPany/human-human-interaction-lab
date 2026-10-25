@@ -5,7 +5,8 @@ import { normalizePhone } from "./lib/phone";
 import { otherOf } from "./lib/pairs";
 import { DEFAULT_RUBRIC } from "./lib/constants";
 import { log } from "./lib/activity";
-import { profilePatch } from "./users";
+import { profilePatch, touchesMatching } from "./users";
+import { requestRescore } from "./lib/rescore";
 
 /**
  * The API the text agent worker uses. Everything is keyed by the phone number
@@ -57,7 +58,7 @@ export const context = query({
       topMatches.push({ name: o?.name, headline: o?.headline, score: m.score, reason: m.reason });
     }
 
-    const { password, ...profile } = user;
+    const { password, seekEmbedding, aboutEmbedding, photoId, ...profile } = user;
     return { user: profile, pendingContact, topMatches };
   },
 });
@@ -83,7 +84,7 @@ export const saveProfile = mutation({
     const user = await userByPhone(ctx, phone);
     if (!user) throw new Error("No user for this phone");
     await ctx.db.patch(user._id, patch);
-    await ctx.scheduler.runAfter(0, internal.matching.rescoreAll, {});
+    if (touchesMatching(patch)) await requestRescore(ctx, user._id);
   },
 });
 

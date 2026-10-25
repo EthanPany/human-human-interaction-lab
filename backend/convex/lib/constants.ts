@@ -38,3 +38,9 @@ export const MATCH_COLORS = [
   "#C9A7F0",
   "#FF8FB8",
 ];
+
+/** With embeddings on, Claude scores at most this many candidates per viewer. */
+export const MAX_SCORED_CANDIDATES = 24;
+
+/** Wait this long after a profile edit before re-scoring (edits come in bursts). */
+export const RESCORE_DEBOUNCE_MS = 4_000;

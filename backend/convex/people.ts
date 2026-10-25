@@ -1,11 +1,26 @@
 import { query } from "./_generated/server";
 import { v } from "convex/values";
+import { QueryCtx } from "./_generated/server";
+import { Doc } from "./_generated/dataModel";
 import { canonicalPair } from "./lib/pairs";
+import { avatarOf } from "./lib/avatar";
 
 /** Public profile fields only (no phone, no password). */
-function publicProfile(u: { _id: string; name?: string; headline?: string; tags?: string[]; hobbies?: string[] } | null) {
+async function publicProfile(ctx: QueryCtx, u: Doc<"users"> | null) {
   if (!u) return null;
-  return { id: u._id, name: u.name, headline: u.headline, tags: u.tags ?? [], hobbies: u.hobbies ?? [] };
+  const avatar = avatarOf(u);
+  return {
+    id: u._id,
+    name: u.name,
+    headline: u.headline,
+    company: u.company,
+    location: u.location,
+    tags: u.tags ?? [],
+    hobbies: u.hobbies ?? [],
+    avatarShape: avatar.shape,
+    avatarColor: avatar.color,
+    photoUrl: u.photoId ? await ctx.storage.getUrl(u.photoId) : null,
+  };
 }
 
 /** The People tab: everyone I saved, newest first. */
@@ -19,7 +34,7 @@ export const list = query({
       .collect();
     const out = [];
     for (const c of conns) {
-      const other = publicProfile(await ctx.db.get(c.other));
+      const other = await publicProfile(ctx, await ctx.db.get(c.other));
       if (!other) continue;
       const pair = canonicalPair(userId, c.other);
       const convo = await ctx.db
@@ -37,7 +52,7 @@ export const list = query({
 export const detail = query({
   args: { userId: v.id("users"), otherId: v.id("users") },
   handler: async (ctx, { userId, otherId }) => {
-    const other = publicProfile(await ctx.db.get(otherId));
+    const other = await publicProfile(ctx, await ctx.db.get(otherId));
     if (!other) return null;
     const pair = canonicalPair(userId, otherId);
     const convo = await ctx.db

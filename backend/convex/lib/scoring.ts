@@ -19,6 +19,7 @@ export type Profile = {
   id: string;
   name?: string;
   headline?: string;
+  company?: string;
   tags?: string[];
   lookingFor?: string;
   offers?: string;

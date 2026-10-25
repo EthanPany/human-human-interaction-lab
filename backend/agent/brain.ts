@@ -13,7 +13,7 @@ You talk to people over iMessage. Keep every reply short and friendly, like a he
 
 Your jobs:
 1. Onboarding at the person's own pace, one question at a time. Learn and save with save_profile:
-   name, headline (what they do), 2 to 4 badge tags (short conversation starters: role, who they are, what they know),
+   name, headline (their role or title), company, location (city), 2 to 4 badge tags (short conversation starters: role, who they are, what they know),
    lookingFor (who they want to meet), offers (what they can help with), hobbies, and appearance
    (a short description so others can find them, only if they are comfortable sharing).
    Save each fact as soon as you learn it. Never ask for something already in the profile.
@@ -31,7 +31,9 @@ const TOOLS: Anthropic.Tool[] = [
       type: "object",
       properties: {
         name: { type: "string" },
-        headline: { type: "string" },
+        headline: { type: "string", description: "role or title, e.g. Brand marketer" },
+        company: { type: "string" },
+        location: { type: "string", description: "city, e.g. Vancouver, BC" },
         tags: { type: "array", items: { type: "string" } },
         lookingFor: { type: "string" },
         offers: { type: "string" },
@@ -66,6 +68,16 @@ const TOOLS: Anthropic.Tool[] = [
 ];
 
 type Turn = Anthropic.MessageParam;
+
+/**
+ * Keep roughly the last `max` turns, but always start at a plain user text so a
+ * tool_result is never separated from the tool_use it answers.
+ */
+function trimHistory(turns: Turn[], max: number): Turn[] {
+  let start = Math.max(0, turns.length - max);
+  while (start < turns.length && !(turns[start].role === "user" && typeof turns[start].content === "string")) start++;
+  return turns.slice(start);
+}
 
 export class Brain {
   private claude = new Anthropic({ apiKey: config.anthropicKey });
@@ -107,7 +119,7 @@ export class Brain {
       turns.push({ role: "user", content: results });
     }
 
-    this.history.set(phone, turns.slice(-16));
+    this.history.set(phone, trimHistory(turns, 16));
     return answer || "Got it!";
   }
 
@@ -117,7 +129,7 @@ export class Brain {
       switch (call.name) {
         case "save_profile": {
           const patch: Record<string, unknown> = {};
-          for (const k of ["name", "headline", "lookingFor", "offers", "appearance"]) {
+          for (const k of ["name", "headline", "company", "location", "lookingFor", "offers", "appearance"]) {
             if (typeof input[k] === "string") patch[k] = input[k];
           }
           for (const k of ["tags", "hobbies"]) {
