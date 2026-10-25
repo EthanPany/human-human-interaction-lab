@@ -6,12 +6,13 @@
 const API = "https://api.photon.codes";
 
 /**
- * Photon 2.0 beta lines are in use. Setting AGENT_LINE in the Convex env means
+ * Photon 2.0 beta lines are in use. Setting AGENT_MODE=spectrum (each person's
+ * line set with photonAssign:setLine) or AGENT_LINE (one line for all) means
  * a dedicated Photon Spectrum line runs instead (backend/agent, npm run agent),
  * so the cloud tick and line assignment stand down.
  */
 export function photonConfigured() {
-  if (process.env.AGENT_LINE) return false;
+  if (process.env.AGENT_LINE || process.env.AGENT_MODE === "spectrum") return false;
   return Boolean(process.env.PHOTON_API_KEY && process.env.PHOTON_PROJECT_ID);
 }
 

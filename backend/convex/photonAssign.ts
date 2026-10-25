@@ -2,7 +2,7 @@ import { internalAction, internalMutation, internalQuery } from "./_generated/se
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { assignLine, lineFor, needsInboundFirst, openDirect, photonConfigured, sendText } from "./lib/photonApi";
-import { isDemoPhone } from "./lib/phone";
+import { isDemoPhone, normalizePhone } from "./lib/phone";
 
 /**
  * Every new account is added to the Photon iMessage pool automatically, so the
@@ -77,5 +77,19 @@ export const backfill = internalMutation({
       n++;
     }
     return n;
+  },
+});
+
+/**
+ * Photon Spectrum gives each person added to the project their own line:
+ * `npx convex run photonAssign:setLine '{"phone":"+15852106589","line":"+14156052974"}'`
+ */
+export const setLine = internalMutation({
+  args: { phone: v.string(), line: v.string() },
+  handler: async (ctx, { phone, line }) => {
+    const u = await ctx.db.query("users").withIndex("by_phone", (q) => q.eq("phone", normalizePhone(phone))).unique();
+    if (!u) return "no user with that phone";
+    await ctx.db.patch(u._id, { agentLine: normalizePhone(line) });
+    return `${u.name ?? u.phone}: ${normalizePhone(line)}`;
   },
 });
