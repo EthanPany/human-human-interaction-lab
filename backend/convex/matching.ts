@@ -7,6 +7,7 @@ import { loadRubric } from "./lib/rubric";
 import { combine, keywordScore, pickTag, pickKeywords, Profile } from "./lib/scoring";
 import { aboutText, embed, embeddingsAvailable, seekText } from "./lib/embeddings";
 import { MAX_SCORED_CANDIDATES } from "./lib/constants";
+import { jevAvailable, jevFits, type JevFit } from "./lib/jev";
 
 /**
  * Matching pipeline (see lib/scoring.ts for the math):
@@ -155,15 +156,39 @@ export const scoreViewer = internalAction({
     }
 
     const me = toProfile(viewer);
+    let jev = new Map<string, JevFit>();
     const fallback = (c: Doc<"users">): MatchRow[] => {
       const them = toProfile(c);
-      const forward = keywordScore(me, them, rubric);
+      const f = jev.get(c._id);
+      const forward = f
+        ? { ...keywordScore(me, them, rubric), score: combine(f.needFitMe, f.needFitThem, f.values, rubric) }
+        : keywordScore(me, them, rubric);
       return [
         { viewer: viewerId, other: c._id, ...forward, keywords: pickKeywords(me, them) },
         { viewer: c._id, other: viewerId, score: forward.score, tag: pickTag(them, me), keywords: pickKeywords(them, me) },
       ];
     };
 
+    // 1. Jev (if configured) rates every pair in about half a second each and the
+    //    scores go live right away, with keyword topics until Claude's arrive.
+    if (jevAvailable()) {
+      jev = await jevFits(me, candidates.map(toProfile));
+      if (jev.size > 0) {
+        const quick = candidates.flatMap((c): MatchRow[] => {
+          const f = jev.get(c._id);
+          if (!f) return [];
+          const score = combine(f.needFitMe, f.needFitThem, f.values, rubric);
+          const them = toProfile(c);
+          return [
+            { viewer: viewerId, other: c._id, score, tag: pickTag(me, them), keywords: pickKeywords(me, them) },
+            { viewer: c._id, other: viewerId, score, tag: pickTag(them, me), keywords: pickKeywords(them, me) },
+          ];
+        });
+        await ctx.runMutation(internal.matching.saveScores, { rows: quick });
+      }
+    }
+
+    // 2. Claude writes the topics and reasons (and scores any pair Jev missed).
     let rows: MatchRow[];
     let result: ClaudeRow[] | null = null;
     if (claudeAvailable()) {
@@ -196,7 +221,10 @@ Return one rating per candidate, using the candidate's id.`,
       rows = candidates.flatMap((c): MatchRow[] => {
         const r = byId.get(c._id);
         if (!r) return fallback(c);
-        const score = combine(Number(r.needFitMe), Number(r.needFitThem), Number(r.values), rubric);
+        const f = jev.get(c._id);
+        const score = f
+          ? combine(f.needFitMe, f.needFitThem, f.values, rubric)
+          : combine(Number(r.needFitMe), Number(r.needFitThem), Number(r.values), rubric);
         return [
           {
             viewer: viewerId,
