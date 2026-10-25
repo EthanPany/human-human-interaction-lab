@@ -1,5 +1,6 @@
-import { ACTIVE_WINDOW_MS, TALK_AFTER_MS, TALK_DISTANCE_M } from "../lib/constants";
+import { NEARBY_ACTIVE_MS, TALK_AFTER_MS, TALK_DISTANCE_M } from "../lib/constants";
 import { canonicalPair, directedKey, loadRubric, matchOf, nowMs, pairKey } from "../lib/db";
+import { isDemoPhone } from "../lib/phone";
 import type { Tx } from "../schema";
 import { openConversation } from "./conversations";
 import { num, str, type Ctx } from "./context";
@@ -9,10 +10,11 @@ import { num, str, type Ctx } from "./context";
 /** Everyone else at the event, with the token they published for me (if any). */
 export function peers({ tx }: Ctx, args: Record<string, unknown>) {
   const userId = str(args, "userId");
-  const cutoff = nowMs(tx) - ACTIVE_WINDOW_MS;
+  // Only phones open right now: every peer costs a UWB session on the phone.
+  const cutoff = nowMs(tx) - NEARBY_ACTIVE_MS;
   const out = [];
   for (const u of tx.db.users.iter()) {
-    if (u.id === userId || (u.lastSeenAt ?? 0) < cutoff) continue;
+    if (u.id === userId || (u.lastSeenAt ?? 0) < cutoff || isDemoPhone(u.phone)) continue;
     const theirs = tx.db.nearbyTokens.id.find(directedKey(u.id, userId));
     out.push({ userId: u.id, name: u.name ?? "", tokenForMe: theirs?.token });
   }

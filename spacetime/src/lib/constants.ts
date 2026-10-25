@@ -4,7 +4,13 @@
 export const PROXIMITY_FRESH_MS = 20_000;
 
 /** Beyond this distance a match does not light up the badge. */
-export const GLOW_RANGE_M = 8;
+export const GLOW_RANGE_M = 10;
+
+/** At or inside this distance the badge glows at full strength. */
+export const FULL_GLOW_M = 3;
+
+/** Only phones whose app reported in this recently get UWB sessions. */
+export const NEARBY_ACTIVE_MS = 3 * 60 * 1000;
 
 /** Within this distance two people count as talking. */
 export const TALK_DISTANCE_M = 1.5;
