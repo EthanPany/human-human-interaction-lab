@@ -44,11 +44,11 @@ async function ownProfile(ctx: QueryCtx, u: Doc<"users">) {
     badgeLayout: u.badgeLayout ?? "avatar",
     photoUrl: photoId ? await ctx.storage.getUrl(photoId) : null,
     hasPassword: Boolean(password),
-    // With a dedicated Spectrum line (AGENT_LINE) everyone texts that number.
-    agentLine: process.env.AGENT_LINE ?? u.agentLine,
+    // Our own SMS number (SMS_LINE) or one shared line (AGENT_LINE): everyone texts that number.
+    agentLine: process.env.SMS_LINE || process.env.AGENT_LINE || u.agentLine,
     // False until they text their agent line once. The app should then say
     // "Text your agent to start" (a shared iMessage line can't text first).
-    agentConnected: Boolean(process.env.AGENT_LINE) || process.env.AGENT_MODE === "spectrum" || Boolean(
+    agentConnected: Boolean(process.env.SMS_LINE) || Boolean(process.env.AGENT_LINE) || process.env.AGENT_MODE === "spectrum" || Boolean(
       await ctx.db
         .query("photonConversations")
         .withIndex("by_phone", (q) => q.eq("phone", normalizeHandle(u.phone)))

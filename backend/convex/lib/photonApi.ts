@@ -45,12 +45,26 @@ export class PhotonError extends Error {
   }
 }
 
-/** Received iMessages created at or after `since` (oldest first). */
+/**
+ * The project's own SMS number (SMS_LINE in the Convex env, E.164). When set,
+ * everyone texts that number, and the agent can text first.
+ */
+export function smsLine() {
+  return process.env.SMS_LINE || undefined;
+}
+
+/** Received texts (iMessage, plus SMS when SMS_LINE is set) at or after `since`, oldest first. */
 export async function receivedSince(since: string): Promise<PhotonInbound[]> {
+  const platforms = smsLine() ? ["imessage", "sms"] : ["imessage"];
+  const all = (await Promise.all(platforms.map((p) => receivedOn(p, since)))).flat();
+  return all.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+async function receivedOn(platform: string, since: string): Promise<PhotonInbound[]> {
   const out: PhotonInbound[] = [];
   let pageToken: string | undefined;
   for (let page = 0; page < 5; page++) {
-    const q = new URLSearchParams({ direction: "received", platform: "imessage", order: "asc", pageSize: "100", createdSince: since });
+    const q = new URLSearchParams({ direction: "received", platform, order: "asc", pageSize: "100", createdSince: since });
     if (pageToken) q.set("pageToken", pageToken);
     const data = (await call("GET", `/messages?${q}`)) as {
       items: {
@@ -105,14 +119,14 @@ export async function setTyping(spaceId: string, agentUserId: string, typing: bo
  * creates the space, but sending into it fails with SHARED_LINE_INBOUND_REQUIRED
  * until the person has texted the line once.
  */
-export async function openDirect(agentHandle: string, personHandle: string) {
+export async function openDirect(agentHandle: string, personHandle: string, platform: "imessage" | "sms" = "imessage") {
   const user = async (handle: string) =>
-    ((await call("POST", "/users", { handle, platform: "imessage" })) as { id: string }).id;
+    ((await call("POST", "/users", { handle, platform })) as { id: string }).id;
   const [agentUserId, personId] = [await user(agentHandle), await user(personHandle)];
   const space = (await call(
     "POST",
     "/spaces",
-    { platform: "imessage", participantIds: [agentUserId, personId] },
+    { platform, participantIds: [agentUserId, personId] },
     { "idempotency-key": `direct:${agentUserId}:${personId}` },
   )) as { id: string };
   return { spaceId: space.id, agentUserId };

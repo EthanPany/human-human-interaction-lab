@@ -2,7 +2,7 @@ import { internalAction, internalMutation, internalQuery, query } from "./_gener
 import { api, internal } from "./_generated/api";
 import { v } from "convex/values";
 import { agentReply, type AgentHost, type Turn } from "./lib/agentCore";
-import { normalizeHandle, PhotonError, photonConfigured, receivedSince, sendText, setTyping, type PhotonInbound } from "./lib/photonApi";
+import { normalizeHandle, openDirect, PhotonError, photonConfigured, receivedSince, sendText, setTyping, smsLine, type PhotonInbound } from "./lib/photonApi";
 import { normalizePhone } from "./lib/phone";
 
 /**
@@ -247,7 +247,14 @@ export const tick = internalAction({
       // 2. Send queued texts
       const pending = await ctx.runQuery(internal.cloudAgent.pendingTexts, {});
       for (const t of pending) {
-        const convo = await ctx.runQuery(internal.cloudAgent.conversationFor, { phone: t.phone });
+        // With our own SMS number the agent can text anyone first.
+        const sms = smsLine();
+        const convo = sms
+          ? await openDirect(sms, t.phone, "sms").catch((e) => {
+              console.error(`open SMS thread with ${t.phone} failed`, e);
+              return null;
+            })
+          : await ctx.runQuery(internal.cloudAgent.conversationFor, { phone: t.phone });
         if (!convo) {
           await ctx.runMutation(internal.cloudAgent.markText, {
             id: t._id,
