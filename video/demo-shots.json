@@ -1,0 +1,164 @@
+[
+ {
+  "shot": 1,
+  "animatic": [
+   0,
+   8
+  ],
+  "source": "TITLE",
+  "text": ""
+ },
+ {
+  "shot": 2,
+  "animatic": [
+   8,
+   14
+  ],
+  "source": "FILM",
+  "text": "Cal Hacks. Hundreds of people in one hangar, and any one of them could change what you build."
+ },
+ {
+  "shot": 3,
+  "animatic": [
+   14,
+   20
+  ],
+  "source": "GFX",
+  "text": "Meeting people in person is still how teams and ideas start."
+ },
+ {
+  "shot": 4,
+  "animatic": [
+   20,
+   27
+  ],
+  "source": "GFX",
+  "text": "But while you talk to one person, you can't talk to anyone else."
+ },
+ {
+  "shot": 5,
+  "animatic": [
+   27,
+   34
+  ],
+  "source": "GFX",
+  "text": "So every hello is a gamble. In one study, ninety five percent of guests wanted to meet new people, yet half their conversations were with friends they already knew."
+ },
+ {
+  "shot": 6,
+  "animatic": [
+   34,
+   39
+  ],
+  "source": "GFX",
+  "text": "What if the room had a filter?"
+ },
+ {
+  "shot": 7,
+  "animatic": [
+   39,
+   45
+  ],
+  "source": "FILM",
+  "text": "Meet the Human Human Interaction Lab. Your phone, on a lanyard, becomes a live name badge."
+ },
+ {
+  "shot": 8,
+  "animatic": [
+   45,
+   53
+  ],
+  "source": "SCREEN",
+  "text": "You onboard by text. Our iMessage agent asks who you are and who you want to meet, and sends you its contact card."
+ },
+ {
+  "shot": 9,
+  "animatic": [
+   53,
+   61
+  ],
+  "source": "SCREEN",
+  "text": "Your badge shows your name, huge, and the topics people should ask you about."
+ },
+ {
+  "shot": 10,
+  "animatic": [
+   61,
+   70
+  ],
+  "source": "SCREEN",
+  "text": "Behind the scenes, every pair of attendees is scored in both directions. Only mutual matches light up."
+ },
+ {
+  "shot": 11,
+  "animatic": [
+   70,
+   84
+  ],
+  "source": "FILM+SCREEN",
+  "text": "Wear the badge and walk the room. As a match comes closer, measured by Ultra Wideband, both badges tint toward a shared color, and the topics flip to what they want to talk to you about."
+ },
+ {
+  "shot": 12,
+  "animatic": [
+   84,
+   94
+  ],
+  "source": "FILM+SCREEN",
+  "text": "Within two meters, the avatars jump together, and the conversation starts recording, with consent."
+ },
+ {
+  "shot": 13,
+  "animatic": [
+   94,
+   104
+  ],
+  "source": "SCREEN",
+  "text": "When you part ways, you get a summary and a follow up you can send."
+ },
+ {
+  "shot": 14,
+  "animatic": [
+   104,
+   111
+  ],
+  "source": "SCREEN",
+  "text": "And everyone you met lives in your People list."
+ },
+ {
+  "shot": 15,
+  "animatic": [
+   111,
+   125
+  ],
+  "source": "GFX",
+  "text": "Under the hood, the iPhone ranges nearby badges and syncs live to Convex, with SpacetimeDB as a second backend. Photon carries the conversation over iMessage."
+ },
+ {
+  "shot": 16,
+  "animatic": [
+   125,
+   137
+  ],
+  "source": "GFX",
+  "text": "TypeSafe's Jev rates every pair in half a second, Claude writes why you should meet, and a geometric mean makes one sided interest score low."
+ },
+ {
+  "shot": 17,
+  "animatic": [
+   137,
+   143
+  ],
+  "source": "GFX",
+  "text": "Every screen, avatar and sound was designed in Figma first."
+ },
+ {
+  "shot": 18,
+  "animatic": [
+   143,
+   152
+  ],
+  "source": "GFX",
+  "text": "Human Human Interaction Lab. Fewer gambles, better hellos."
+ }
+]
