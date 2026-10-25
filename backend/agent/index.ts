@@ -1,45 +1,41 @@
-// Text message agent worker.
-// Sends whatever lands in the Convex outbox and replies to incoming texts with Claude.
+// Text message agent worker. Run: npm run agent   (or AGENT_TRANSPORT=console npm run agent)
 import { ConvexClient } from "convex/browser";
-import Anthropic from "@anthropic-ai/sdk";
-import { api } from "../convex/_generated/api";
+import { config } from "./config";
+import { Brain } from "./brain";
+import { deliverOutbox } from "./outbox";
+import { ConsoleTransport } from "./transports/console";
+import { PhotonTransport } from "./transports/photon";
+import type { Transport } from "./transports/transport";
 
-const convex = new ConvexClient(process.env.CONVEX_URL!);
-const claude = new Anthropic(); // reads ANTHROPIC_API_KEY
-
-// TODO(photon): create the Spectrum app with the iMessage provider and
-// replace sendText / the inbound handler below. See docs.photon.codes.
-async function sendText(phone: string, body: string) {
-  console.log(`[to ${phone}] ${body}`);
-}
-
-// Outbound: everything the backend wants to say goes through the outbox
-convex.onUpdate(api.outbox.pending, {}, async (messages) => {
-  for (const m of messages) {
-    await sendText(m.phone, m.body);
-    await convex.mutation(api.outbox.markSent, { id: m._id });
+function makeTransport(): Transport {
+  if (config.transport === "console") return new ConsoleTransport();
+  if (!config.photonProjectId || !config.photonProjectSecret) {
+    throw new Error("Set PHOTON_PROJECT_ID and PHOTON_PROJECT_SECRET, or run with AGENT_TRANSPORT=console");
   }
-});
-
-// Inbound: call this from the Spectrum message loop
-export async function handleIncoming(phone: string, text: string) {
-  const user = await convex.query(api.users.byPhone, { phone });
-  const res = await claude.messages.create({
-    model: process.env.CLAUDE_MODEL ?? "claude-sonnet-5-5",
-    max_tokens: 400,
-    system:
-      "You are a friendly event networking agent that talks over text. " +
-      "Keep replies short. Collect name, headline, badge tags, who they want to meet, " +
-      "and a short description of what they look like, one question at a time.",
-    messages: [
-      {
-        role: "user",
-        content: `Profile so far: ${JSON.stringify(user ?? {})}\n\nThey texted: ${text}`,
-      },
-    ],
-  });
-  const reply = res.content.find((b) => b.type === "text")?.text ?? "";
-  await sendText(phone, reply);
+  return new PhotonTransport(config.photonProjectId, config.photonProjectSecret);
 }
 
-console.log("Agent worker running");
+async function main() {
+  const convex = new ConvexClient(config.convexUrl);
+  const transport = makeTransport();
+  const brain = new Brain(convex);
+
+  await transport.start(async ({ from, text }) => {
+    console.log(`[${from}] ${text}`);
+    try {
+      const reply = await brain.reply(from, text);
+      await transport.send(from, reply);
+    } catch (e) {
+      console.error("reply failed", e);
+      await transport.send(from, "Sorry, I hit a snag. Try again in a moment?");
+    }
+  });
+
+  deliverOutbox(convex, transport);
+  console.log(`Agent running (${transport.name}) against ${config.convexUrl}`);
+}
+
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

@@ -4,7 +4,13 @@
   "type": "module",
   "scripts": {
     "dev": "convex dev",
-    "agent": "bun run agent/index.ts"
+    "deploy:once": "convex dev --once",
+    "seed": "convex run seed:demo",
+    "rescore": "convex run matching:rescore",
+    "end-event": "convex run event:end",
+    "agent": "bun run agent/index.ts",
+    "agent:console": "AGENT_TRANSPORT=console bun run agent/index.ts",
+    "typecheck": "tsc -p convex --noEmit && tsc -p . --noEmit"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0",
