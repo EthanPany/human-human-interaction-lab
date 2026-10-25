@@ -30,6 +30,7 @@ export default defineSchema({
     lastSeenAt: v.optional(v.number()), // last time the app reported in
     profileUpdatedAt: v.optional(v.number()), // debounces re-scoring
     agentLine: v.optional(v.string()), // this person's Photon iMessage line (assigned at sign up)
+    textsPaused: v.optional(v.boolean()), // they texted STOP: no proactive texts until START
 
     // How the badge looks (see lib/avatar.ts)
     avatarShape: v.optional(v.string()), // blob | puzzle | circle | triangle | square | pill | flower
@@ -159,7 +160,10 @@ export default defineSchema({
     sentAt: v.optional(v.number()),
     attempts: v.optional(v.number()),
     failed: v.optional(v.string()), // why it was given up on (sentAt is set too)
-  }).index("by_unsent", ["sentAt", "at"]),
+    kind: v.optional(v.string()), // "welcome" | undefined (heads ups, recaps, contact prompts)
+  })
+    .index("by_unsent", ["sentAt", "at"])
+    .index("by_phone", ["phone", "at"]),
 
   // Cloud agent (convex/cloudAgent.ts) state ---------------------------------
   // Where to reply to each person on Photon (learned from their first text).
@@ -182,5 +186,8 @@ export default defineSchema({
     since: v.string(),
     seen: v.array(v.string()),
     lockedUntil: v.number(),
+    lastTickAt: v.optional(v.number()), // health: last finished poll
+    lastInboundAt: v.optional(v.number()), // health: last text received
+    lastError: v.optional(v.string()), // health: last poll or send error
   }).index("by_key", ["key"]),
 });

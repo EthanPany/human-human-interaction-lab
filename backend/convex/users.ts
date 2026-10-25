@@ -4,6 +4,7 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { normalizePhone, isValidPhone } from "./lib/phone";
 import { queueText } from "./lib/texts";
+import { normalizeHandle } from "./lib/photonApi";
 import { avatarOf, defaultAvatar } from "./lib/avatar";
 import { requestRescore } from "./lib/rescore";
 
@@ -43,6 +44,14 @@ async function ownProfile(ctx: QueryCtx, u: Doc<"users">) {
     badgeLayout: u.badgeLayout ?? "avatar",
     photoUrl: photoId ? await ctx.storage.getUrl(photoId) : null,
     hasPassword: Boolean(password),
+    // False until they text their agent line once. The app should then say
+    // "Text your agent to start" (a shared iMessage line can't text first).
+    agentConnected: Boolean(
+      await ctx.db
+        .query("photonConversations")
+        .withIndex("by_phone", (q) => q.eq("phone", normalizeHandle(u.phone)))
+        .first(),
+    ),
   };
 }
 
@@ -76,12 +85,15 @@ export const signIn = mutation({
     });
     // Put them on the iMessage line right away so texting the agent just works
     await ctx.scheduler.runAfter(0, internal.photonAssign.ensure, { userId: id });
+    // Sent as soon as they first text the line (a shared line can't text first).
+    // If their first text gets a direct answer, the agent greets them there instead.
     await queueText(
       ctx,
       phone,
       args.name
-        ? `Hi ${args.name}! I'm your badge agent. I'll help you meet the right people here. Who are you hoping to meet today?`
-        : "Hi! I'm your badge agent. I'll help you meet the right people here. What should I call you, and who are you hoping to meet?",
+        ? `Hi ${args.name}, I'm your badge agent. I'll help you meet the right people at the event and remember who you met. Quick question to get you set up: what do you do?`
+        : "Hi, I'm your badge agent. I'll help you meet the right people at the event and remember who you met. What should I call you?",
+      "welcome",
     );
     return id;
   },

@@ -22,6 +22,7 @@ export class Brain {
       addFeedback: (phone, note, rating, otherName) =>
         convex.mutation(api.agent.addFeedback, { phone, note, rating, otherName }),
       updateRubricNotes: (notes) => convex.mutation(api.agent.updateRubricNotes, { notes }),
+      setTextsPaused: (phone, paused) => convex.mutation(api.agent.setTextsPaused, { phone, paused }),
     };
   }
 

@@ -83,6 +83,39 @@ export async function sendText(spaceId: string, agentUserId: string, text: strin
   );
 }
 
+/** Show "..." in their thread while Claude thinks. Best effort. */
+export async function setTyping(spaceId: string, agentUserId: string, typing: boolean) {
+  try {
+    await call("POST", `/spaces/${spaceId}/typing`, { senderId: agentUserId, typing });
+  } catch {
+    // cosmetic only
+  }
+}
+
+/**
+ * Open (or reuse) the direct thread between an agent line and a person, so the
+ * agent can text first. Works on a dedicated line. On the shared pool Photon
+ * creates the space, but sending into it fails with SHARED_LINE_INBOUND_REQUIRED
+ * until the person has texted the line once.
+ */
+export async function openDirect(agentHandle: string, personHandle: string) {
+  const user = async (handle: string) =>
+    ((await call("POST", "/users", { handle, platform: "imessage" })) as { id: string }).id;
+  const [agentUserId, personId] = [await user(agentHandle), await user(personHandle)];
+  const space = (await call(
+    "POST",
+    "/spaces",
+    { platform: "imessage", participantIds: [agentUserId, personId] },
+    { "idempotency-key": `direct:${agentUserId}:${personId}` },
+  )) as { id: string };
+  return { spaceId: space.id, agentUserId };
+}
+
+/** Photon refuses a first text on a shared line until the person writes in. */
+export function needsInboundFirst(e: unknown) {
+  return e instanceof PhotonError && e.message.includes("SHARED_LINE_INBOUND_REQUIRED");
+}
+
 /** Compare handles by digits so "+1 (415) 555..." and "+1415555..." match. */
 export function normalizeHandle(handle: string) {
   return handle.includes("@") ? handle.toLowerCase() : handle.replace(/[^\d+]/g, "");

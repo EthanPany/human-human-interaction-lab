@@ -1,7 +1,7 @@
 import { internalAction, internalMutation, internalQuery } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
-import { assignLine, lineFor, photonConfigured } from "./lib/photonApi";
+import { assignLine, lineFor, needsInboundFirst, openDirect, photonConfigured, sendText } from "./lib/photonApi";
 import { isDemoPhone } from "./lib/phone";
 
 /**
@@ -23,8 +23,31 @@ export const ensure = internalAction({
       console.error("Photon assignment failed", u.phone, e);
       return;
     }
-    if (line) await ctx.runMutation(internal.photonAssign.save, { userId, line });
+    if (!line) return;
+    await ctx.runMutation(internal.photonAssign.save, { userId, line });
+
+    // Try to say hi right away. A dedicated line can text first; the shared
+    // pool refuses until they text in, and then the cloud agent greets them.
+    const welcome = await ctx.runQuery(internal.photonAssign.pendingWelcome, { phone: u.phone });
+    if (!welcome) return;
+    try {
+      const { spaceId, agentUserId } = await openDirect(line, u.phone);
+      await sendText(spaceId, agentUserId, welcome.body, `outbox:${welcome._id}`);
+      await ctx.runMutation(internal.cloudAgent.rememberConversation, { phone: u.phone, spaceId, agentUserId });
+      await ctx.runMutation(internal.cloudAgent.markText, { id: welcome._id, sent: true });
+    } catch (e) {
+      if (needsInboundFirst(e)) console.log(`welcome for ${u.phone} waits for their first text (shared line)`);
+      else console.error("welcome send failed", u.phone, e);
+    }
   },
+});
+
+export const pendingWelcome = internalQuery({
+  args: { phone: v.string() },
+  handler: async (ctx, { phone }) =>
+    (await ctx.db.query("outbox").withIndex("by_phone", (q) => q.eq("phone", phone)).collect()).find(
+      (t) => t.kind === "welcome" && t.sentAt === undefined,
+    ) ?? null,
 });
 
 export const user = internalQuery({
