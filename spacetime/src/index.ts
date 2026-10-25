@@ -6,7 +6,7 @@ import { endEvent, headsUps } from "./api/notify";
 import { profileChanged, rescoreAll as rescoreEveryone } from "./api/matching";
 import { summarizeConversation } from "./api/summarize";
 import { tick } from "./api/cloudAgent";
-import { seedDemo } from "./api/seed";
+import { seedDemo, seedTestPair } from "./api/seed";
 import { scheduleRescoreAll } from "./lib/db";
 
 /**
@@ -68,6 +68,9 @@ export const rescoreAll = spacetimedb.procedure({ onSchedule: rescoreAllJob }, {
 
 /** spacetime call <db> seed_demo */
 export const seed = spacetimedb.reducer({ name: "seed_demo" }, (ctx) => seedDemo(ctx));
+
+/** spacetime call <db> seed_test_pair  (Theo and Nora, the two phone test attendees) */
+export const seedPair = spacetimedb.reducer({ name: "seed_test_pair" }, (ctx) => seedTestPair(ctx));
 
 /** spacetime call <db> rescore */
 export const rescore = spacetimedb.reducer((ctx) => scheduleRescoreAll(ctx));
