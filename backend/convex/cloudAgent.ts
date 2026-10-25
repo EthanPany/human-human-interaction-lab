@@ -340,3 +340,14 @@ export const agentLineFor = internalQuery({
     return u?.agentLine ?? null;
   },
 });
+
+/** Send the agent's contact card into an existing thread: `npx convex run cloudAgent:sendCard '{"phone":"+1..."}'` */
+export const sendCard = internalAction({
+  args: { phone: v.string() },
+  handler: async (ctx, { phone }) => {
+    const convo = await ctx.runQuery(internal.cloudAgent.conversationFor, { phone: normalizeHandle(phone) });
+    if (!convo) return "no thread yet: they need to text the line first";
+    await sendContactCard(ctx, phone, convo.spaceId, convo.agentUserId, `manual:${Date.now()}`);
+    return "sent";
+  },
+});
