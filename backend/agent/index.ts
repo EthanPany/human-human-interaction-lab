@@ -5,12 +5,19 @@ import { Brain } from "./brain";
 import { deliverOutbox } from "./outbox";
 import { ConsoleTransport } from "./transports/console";
 import { PhotonTransport } from "./transports/photon";
+import { Photon2Transport } from "./transports/photon2";
 import type { Transport } from "./transports/transport";
 
 function makeTransport(): Transport {
   if (config.transport === "console") return new ConsoleTransport();
+  if (config.transport === "photon2") {
+    if (!config.photonProjectId || !config.photonApiKey) {
+      throw new Error("Set PHOTON_PROJECT_ID and PHOTON_API_KEY in .env.local, or run npm run agent:console");
+    }
+    return new Photon2Transport(config.photonProjectId, config.photonApiKey);
+  }
   if (!config.photonProjectId || !config.photonProjectSecret) {
-    throw new Error("Set PHOTON_PROJECT_ID and PHOTON_PROJECT_SECRET, or run with AGENT_TRANSPORT=console");
+    throw new Error("Set PHOTON_PROJECT_ID and PHOTON_API_KEY (Photon 2.0) in .env.local, or run npm run agent:console");
   }
   return new PhotonTransport(config.photonProjectId, config.photonProjectSecret);
 }
@@ -27,7 +34,7 @@ async function main() {
       await transport.send(from, reply);
     } catch (e) {
       console.error("reply failed", e);
-      await transport.send(from, "Sorry, I hit a snag. Try again in a moment?");
+      await transport.send(from, "Sorry, I hit a snag. Try again in a moment?").catch(() => undefined);
     }
   });
 
