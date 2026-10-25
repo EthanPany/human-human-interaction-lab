@@ -24,6 +24,7 @@ async function main() {
   const a = (await client.mutation(api.users.signIn, { phone: "+14155550190", name: "Test Alice" })) as Id<"users">;
   const b = (await client.mutation(api.users.signIn, { phone: "+14155550191", name: "Test Bob" })) as Id<"users">;
   check("sign in", a && b);
+  await client.mutation(api.testing.resetTestPair, { phones: ["+14155550190", "+14155550191"] });
 
   await client.mutation(api.users.updateProfile, {
     userId: a,
