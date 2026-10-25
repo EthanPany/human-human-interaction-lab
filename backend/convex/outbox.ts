@@ -1,7 +1,14 @@
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { queueText } from "./lib/texts";
 
-// Live query the agent worker subscribes to
+/** Queue a text from an action or the scheduler. Mutations call queueText directly. */
+export const enqueue = internalMutation({
+  args: { phone: v.string(), body: v.string() },
+  handler: async (ctx, { phone, body }) => queueText(ctx, phone, body),
+});
+
+/** Live query the agent worker subscribes to. */
 export const pending = query({
   args: {},
   handler: async (ctx) => {
