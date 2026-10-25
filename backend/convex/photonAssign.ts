@@ -15,15 +15,17 @@ export const ensure = internalAction({
   handler: async (ctx, { userId }) => {
     if (!photonConfigured()) return;
     const u = await ctx.runQuery(internal.photonAssign.user, { userId });
-    if (!u || u.agentLine || isDemoPhone(u.phone) || u.phone.includes("@")) return;
+    if (!u || isDemoPhone(u.phone) || u.phone.includes("@")) return;
     let line: string | undefined;
     try {
+      // Photon's assignment is the truth; the saved line may be stale
       line = (await lineFor(u.phone)) ?? (await assignLine(u.phone));
     } catch (e) {
       console.error("Photon assignment failed", u.phone, e);
       return;
     }
     if (!line) return;
+    if (line === u.agentLine) return; // already set up, welcome handled before
     await ctx.runMutation(internal.photonAssign.save, { userId, line });
 
     // Try to say hi right away. A dedicated line can text first; the shared
@@ -72,7 +74,7 @@ export const backfill = internalMutation({
     const users = await ctx.db.query("users").collect();
     let n = 0;
     for (const u of users) {
-      if (u.agentLine || isDemoPhone(u.phone)) continue;
+      if (isDemoPhone(u.phone)) continue; // ensure skips anyone already right
       await ctx.scheduler.runAfter(n * 500, internal.photonAssign.ensure, { userId: u._id });
       n++;
     }

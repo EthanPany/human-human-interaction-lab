@@ -72,7 +72,8 @@ export const signIn = mutation({
         throw new Error("Wrong password");
       }
       if (args.name && !existing.name) await ctx.db.patch(existing._id, { name: args.name });
-      if (!existing.agentLine) await ctx.scheduler.runAfter(0, internal.photonAssign.ensure, { userId: existing._id });
+      // Every sign in checks their Photon line (adds them if missing, fixes a stale one)
+      await ctx.scheduler.runAfter(0, internal.photonAssign.ensure, { userId: existing._id });
       return existing._id;
     }
     const id = await ctx.db.insert("users", {
