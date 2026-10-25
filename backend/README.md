@@ -43,3 +43,13 @@ At the end of the demo: `npm run end-event` sends recaps and intros.
 * The phone number is the account. Passwords are optional and stored as plain text, demo only.
 * Seeded people use fictional 555-01xx numbers and are never texted.
 * Tuning knobs (distances, cooldowns, default rubric) live in `convex/lib/constants.ts`.
+
+
+## Testing
+
+`npm run e2e` acts as two phones against the deployment in `.env.local`: sign in, profile, photo upload, scoring, Nearby tokens, approach at 5 m, talking after 10 s at 1 m, transcript, saving by text, People list and detail. It uses fictional 555-01xx numbers, so no real texts go out.
+
+## Optional keys
+
+- `ANTHROPIC_API_KEY` (Convex env and `.env.local`): Claude scoring, summaries and the agent. Without it matching uses the keyword fallback.
+- `VOYAGE_API_KEY` (Convex env): semantic prefilter. With a big crowd only the 24 nearest people in both directions (they fit my needs, I fit theirs) go to Claude.
