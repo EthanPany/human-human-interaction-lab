@@ -3,8 +3,14 @@
 /** A distance report older than this is treated as "not nearby anymore". */
 export const PROXIMITY_FRESH_MS = 20_000;
 
-/** Beyond this distance a match does not light up the badge. */
-export const GLOW_RANGE_M = 8;
+/** A match starts to show at this distance (UWB senses roughly 10 m line of sight)... */
+export const GLOW_RANGE_M = 10;
+
+/** ...and is at full strength from this distance in. */
+export const FULL_GLOW_M = 3;
+
+/** Range only with phones whose app checked in this recently (heartbeat is 30 s). */
+export const NEARBY_ACTIVE_MS = 3 * 60 * 1000;
 
 /** Within this distance two people count as talking. */
 export const TALK_DISTANCE_M = 1.5;

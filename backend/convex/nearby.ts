@@ -5,7 +5,8 @@ import { canonicalPair } from "./lib/pairs";
 import { MutationCtx } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
 import { loadRubric } from "./lib/rubric";
-import { ACTIVE_WINDOW_MS, TALK_AFTER_MS, TALK_DISTANCE_M } from "./lib/constants";
+import { NEARBY_ACTIVE_MS, PROXIMITY_FRESH_MS, TALK_AFTER_MS, TALK_DISTANCE_M } from "./lib/constants";
+import { isDemoPhone } from "./lib/phone";
 
 /**
  * Nearby Interaction plumbing.
@@ -16,15 +17,20 @@ import { ACTIVE_WINDOW_MS, TALK_AFTER_MS, TALK_DISTANCE_M } from "./lib/constant
  * through reportDistance.
  */
 
-/** Everyone else at the event, with the token they published for me (if any). */
+/**
+ * Phones to range with: people whose app is open right now (heartbeat within
+ * NEARBY_ACTIVE_MS), with the token they published for me (if any). Seeded
+ * demo people have no phone, so they're skipped: every peer costs a UWB
+ * session, and iOS only runs a handful at once.
+ */
 export const peers = query({
   args: { userId: v.id("users") },
   handler: async (ctx, { userId }) => {
-    const cutoff = Date.now() - ACTIVE_WINDOW_MS;
+    const cutoff = Date.now() - NEARBY_ACTIVE_MS;
     const users = await ctx.db.query("users").collect();
     const out = [];
     for (const u of users) {
-      if (u._id === userId || (u.lastSeenAt ?? 0) < cutoff) continue;
+      if (u._id === userId || (u.lastSeenAt ?? 0) < cutoff || isDemoPhone(u.phone)) continue;
       const theirs = await ctx.db
         .query("nearbyTokens")
         .withIndex("by_owner_peer", (q) => q.eq("userId", u._id).eq("peerId", userId))
@@ -84,3 +90,40 @@ async function isMatch(ctx: MutationCtx, x: Id<"users">, y: Id<"users">) {
   ]);
   return Math.max(xy?.score ?? 0, yx?.score ?? 0) >= rubric.threshold;
 }
+
+/**
+ * What the server sees for my nearby phones: latest distance, how fresh it is,
+ * whether both sides published tokens, and the match score each way. Powers the
+ * Nearby debug panel in Settings.
+ */
+export const debug = query({
+  args: { userId: v.id("users") },
+  handler: async (ctx, { userId }) => {
+    const now = Date.now();
+    const rows = [
+      ...(await ctx.db.query("proximity").withIndex("by_a", (q) => q.eq("a", userId)).collect()),
+      ...(await ctx.db.query("proximity").withIndex("by_b", (q) => q.eq("b", userId)).collect()),
+    ];
+    const out = [];
+    for (const r of rows) {
+      const peerId = r.a === userId ? r.b : r.a;
+      const peer = await ctx.db.get(peerId);
+      const [mine, theirs, myToken, theirToken] = await Promise.all([
+        ctx.db.query("matches").withIndex("by_pair", (q) => q.eq("viewer", userId).eq("other", peerId)).unique(),
+        ctx.db.query("matches").withIndex("by_pair", (q) => q.eq("viewer", peerId).eq("other", userId)).unique(),
+        ctx.db.query("nearbyTokens").withIndex("by_owner_peer", (q) => q.eq("userId", userId).eq("peerId", peerId)).unique(),
+        ctx.db.query("nearbyTokens").withIndex("by_owner_peer", (q) => q.eq("userId", peerId).eq("peerId", userId)).unique(),
+      ]);
+      out.push({
+        peerId,
+        name: peer?.name ?? "",
+        meters: r.meters,
+        ageSeconds: Math.round((now - r.at) / 1000),
+        fresh: now - r.at < PROXIMITY_FRESH_MS,
+        score: Math.max(mine?.score ?? 0, theirs?.score ?? 0),
+        tokensBothWays: Boolean(myToken && theirToken),
+      });
+    }
+    return out.sort((x, y) => x.ageSeconds - y.ageSeconds);
+  },
+});

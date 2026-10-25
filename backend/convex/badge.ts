@@ -3,7 +3,7 @@ import { v } from "convex/values";
 import { loadRubric } from "./lib/rubric";
 import { otherOf, pairColor } from "./lib/pairs";
 import { avatarOf } from "./lib/avatar";
-import { GLOW_RANGE_M, PROXIMITY_FRESH_MS, TALK_AFTER_MS, TALK_DISTANCE_M } from "./lib/constants";
+import { FULL_GLOW_M, GLOW_RANGE_M, PROXIMITY_FRESH_MS, TALK_AFTER_MS } from "./lib/constants";
 
 /**
  * Everything the worn badge needs, as one live query. The phone subscribes and
@@ -67,7 +67,7 @@ export const state = query({
       ]);
       const score = Math.max(mine?.score ?? 0, theirs?.score ?? 0);
       if (score < rubric.threshold) continue;
-      const proximity = Math.max(0, Math.min(1, (GLOW_RANGE_M - row.meters) / (GLOW_RANGE_M - TALK_DISTANCE_M)));
+      const proximity = Math.max(0, Math.min(1, (GLOW_RANGE_M - row.meters) / (GLOW_RANGE_M - FULL_GLOW_M)));
       const rank = inTalk ? 10 + score : score * (0.3 + 0.7 * proximity);
       if (!best || rank > best.rank) best = { rank, row, score };
     }
@@ -91,7 +91,7 @@ export const state = query({
       openConversation !== null &&
       openConversation.endedAt === undefined;
 
-    const proximity = Math.max(0, Math.min(1, (GLOW_RANGE_M - best.row.meters) / (GLOW_RANGE_M - TALK_DISTANCE_M)));
+    const proximity = Math.max(0, Math.min(1, (GLOW_RANGE_M - best.row.meters) / (GLOW_RANGE_M - FULL_GLOW_M)));
     const peerAvatar = peer ? avatarOf(peer) : undefined;
     return {
       ...base,
