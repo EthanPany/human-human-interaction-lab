@@ -1,5 +1,6 @@
 // Text message agent worker. Run: npm run agent   (or AGENT_TRANSPORT=console npm run agent)
 import { ConvexClient } from "convex/browser";
+import { httpConvex } from "./convexHttp";
 import { api } from "../convex/_generated/api";
 import { config } from "./config";
 import { Brain } from "./brain";
@@ -24,7 +25,8 @@ function makeTransport(): Transport {
 }
 
 async function main() {
-  const convex = new ConvexClient(config.convexUrl);
+  // CONVEX_TRANSPORT=ws for the live WebSocket client; HTTPS works on more networks.
+  const convex = process.env.CONVEX_TRANSPORT === "ws" ? new ConvexClient(config.convexUrl) : httpConvex(config.convexUrl);
   const cloudEnabled = (await convex.query(api.cloudAgent.status, {})).enabled;
   if (config.transport !== "console" && cloudEnabled) {
     console.log("The text agent is already running in Convex (PHOTON_* set in the Convex env). Nothing to start here.");
