@@ -28,6 +28,7 @@ export default defineSchema({
     californiaMode: v.optional(v.boolean()),
     recordConversations: v.optional(v.boolean()),
     lastSeenAt: v.optional(v.number()), // last time the app reported in
+    rangingSince: v.optional(v.number()), // set while the badge is worn full screen (UWB on)
     profileUpdatedAt: v.optional(v.number()), // debounces re-scoring
     agentLine: v.optional(v.string()), // this person's Photon iMessage line (assigned at sign up)
     textsPaused: v.optional(v.boolean()), // they texted STOP: no proactive texts until START

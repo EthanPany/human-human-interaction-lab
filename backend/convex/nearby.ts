@@ -27,11 +27,14 @@ import { isDemoPhone } from "./lib/phone";
 export const peers = query({
   args: { userId: v.id("users") },
   handler: async (ctx, { userId }) => {
+    const me = await ctx.db.get(userId);
+    if (!me?.rangingSince) return [];
     const cutoff = Date.now() - NEARBY_ACTIVE_MS;
     const users = await ctx.db.query("users").collect();
     const out = [];
     for (const u of users) {
-      if (u._id === userId || (u.lastSeenAt ?? 0) < cutoff || isDemoPhone(u.phone)) continue;
+      // Only badges worn full screen right now take part.
+      if (u._id === userId || !u.rangingSince || (u.lastSeenAt ?? 0) < cutoff || isDemoPhone(u.phone)) continue;
       const theirs = await ctx.db
         .query("nearbyTokens")
         .withIndex("by_owner_peer", (q) => q.eq("userId", u._id).eq("peerId", userId))
@@ -55,11 +58,38 @@ export const uploadToken = mutation({
   },
 });
 
-/** Called by the phone about once per second per peer. */
+/**
+ * The badge went full screen (on) or was taken off, minimized or closed (off).
+ * Off clears this person's distances and tokens at once, so the other phone's
+ * badge lets go immediately instead of waiting for the reading to go stale.
+ */
+export const setRanging = mutation({
+  args: { userId: v.id("users"), on: v.boolean() },
+  handler: async (ctx, { userId, on }) => {
+    const u = await ctx.db.get(userId);
+    if (!u) return;
+    const now = Date.now();
+    await ctx.db.patch(userId, { rangingSince: on ? (u.rangingSince ?? now) : undefined, lastSeenAt: now });
+    if (on) return;
+    const rows = [
+      ...(await ctx.db.query("proximity").withIndex("by_pair", (q) => q.eq("a", userId)).collect()),
+      ...(await ctx.db.query("proximity").collect()).filter((r) => r.b === userId),
+    ];
+    for (const r of rows) await ctx.db.delete(r._id);
+    const mine = await ctx.db.query("nearbyTokens").withIndex("by_owner_peer", (q) => q.eq("userId", userId)).collect();
+    const theirs = (await ctx.db.query("nearbyTokens").collect()).filter((t) => t.peerId === userId);
+    for (const t of [...mine, ...theirs]) await ctx.db.delete(t._id);
+  },
+});
+
+/** Called by the phone about twice a second per peer while both badges are worn. */
 export const reportDistance = mutation({
   args: { userId: v.id("users"), peerId: v.id("users"), meters: v.number() },
   handler: async (ctx, { userId, peerId, meters }) => {
     const now = Date.now();
+    // A late reading from a phone that already took its badge off doesn't count.
+    const [me, them] = await Promise.all([ctx.db.get(userId), ctx.db.get(peerId)]);
+    if (!me?.rangingSince || !them?.rangingSince) return;
     const pair = canonicalPair(userId, peerId);
     const row = await ctx.db
       .query("proximity")

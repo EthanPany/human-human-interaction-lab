@@ -70,6 +70,15 @@ const nearbyTokens = table(
   },
 );
 
+/** Badges worn full screen right now (UWB on). Missing row = not ranging. */
+const ranging = table(
+  { name: "ranging" },
+  {
+    userId: t.string().primaryKey(),
+    since: t.f64(),
+  },
+);
+
 const proximity = table(
   { name: "proximity" },
   {
@@ -268,6 +277,7 @@ const spacetimedb = schema(
     photos,
     moments,
     nearbyTokens,
+    ranging,
     proximity,
     matches,
     conversations,
