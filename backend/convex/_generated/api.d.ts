@@ -30,6 +30,7 @@ import type * as notify from "../notify.js";
 import type * as outbox from "../outbox.js";
 import type * as people from "../people.js";
 import type * as seed from "../seed.js";
+import type * as testing from "../testing.js";
 import type * as users from "../users.js";
 
 import type {
@@ -61,6 +62,7 @@ declare const fullApi: ApiFromModules<{
   outbox: typeof outbox;
   people: typeof people;
   seed: typeof seed;
+  testing: typeof testing;
   users: typeof users;
 }>;
 
