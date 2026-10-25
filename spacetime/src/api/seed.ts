@@ -22,13 +22,13 @@ export const DEMO = [
 /**
  * Two hand written test attendees built to match each other strongly (both
  * directions), for testing Nearby Interaction / UWB with two phones. Sign in on
- * one phone as (415) 555 0190 and on the other as (415) 555 0191. These are
- * fictional 555 numbers, so no texts are ever sent to them.
+ * one phone as (585) 210 6589 (Ethan) and on the other as (760) 582 2423 (Carl).
+ * These are the team's real phones, so the agent can text them once they text it.
  */
 export const TEST_PAIR = [
   {
-    phone: "+14155550190",
-    name: "Theo Park",
+    phone: "+15852106589",
+    name: "Ethan",
     company: "UC Berkeley",
     location: "Berkeley, CA",
     avatarShape: "blob",
@@ -42,8 +42,8 @@ export const TEST_PAIR = [
     appearance: "green beanie, gray hoodie, a phone on a lanyard",
   },
   {
-    phone: "+14155550191",
-    name: "Nora Lin",
+    phone: "+17605822423",
+    name: "Carl",
     company: "Stanford d.school",
     location: "Palo Alto, CA",
     avatarShape: "flower",

@@ -2,8 +2,8 @@ import { mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { canonicalPair } from "./lib/pairs";
 
-/** Only these fictional numbers can be reset (used by scripts/e2e.ts). */
-const TEST_PHONES = ["+14155550190", "+14155550191"];
+/** Only these numbers can be reset: the e2e test pair and the two phone UWB test pair. */
+const TEST_PHONES = ["+14155550190", "+14155550191", "+15852106589", "+17605822423"];
 
 /** Forget everything between the two e2e test users so the test can rerun. */
 export const resetTestPair = mutation({
