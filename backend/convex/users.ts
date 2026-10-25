@@ -1,7 +1,7 @@
 import { mutation, query, internalQuery, QueryCtx } from "./_generated/server";
 import { Doc } from "./_generated/dataModel";
 import { v } from "convex/values";
-import { normalizePhone } from "./lib/phone";
+import { normalizePhone, isValidPhone } from "./lib/phone";
 import { queueText } from "./lib/texts";
 import { avatarOf, defaultAvatar } from "./lib/avatar";
 import { requestRescore } from "./lib/rescore";
@@ -50,7 +50,7 @@ export const signIn = mutation({
   args: { phone: v.string(), name: v.optional(v.string()), password: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const phone = normalizePhone(args.phone);
-    if (phone.replace(/\D/g, "").length < 10) throw new Error("Enter a full phone number");
+    if (!isValidPhone(phone)) throw new Error("Enter a full phone number, with the country code if outside the US");
     const existing = await ctx.db
       .query("users")
       .withIndex("by_phone", (q) => q.eq("phone", phone))
