@@ -66,7 +66,7 @@ export const signIn = mutation({
       phone,
       name: args.name,
       password: args.password || undefined,
-      californiaMode: true,
+      californiaMode: false,
       recordConversations: true,
       lastSeenAt: Date.now(),
       badgeLayout: "avatar",

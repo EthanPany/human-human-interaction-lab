@@ -71,7 +71,7 @@ export const ensureUser = mutation({
     if (existing) return existing._id;
     return await ctx.db.insert("users", {
       phone: normalizePhone(phone),
-      californiaMode: true,
+      californiaMode: false,
       recordConversations: true,
     });
   },

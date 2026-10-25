@@ -25,7 +25,7 @@ export const demo = internalMutation({
     for (const p of DEMO) {
       const phone = `+1415555${(100 + i++).toString().padStart(4, "0")}`; // +1 415 555 01xx
       const existing = await ctx.db.query("users").withIndex("by_phone", (q) => q.eq("phone", phone)).unique();
-      const doc = { ...p, phone, badgeLayout: "avatar", californiaMode: true, recordConversations: true, lastSeenAt: now };
+      const doc = { ...p, phone, badgeLayout: "avatar", californiaMode: false, recordConversations: true, lastSeenAt: now };
       if (existing) await ctx.db.patch(existing._id, doc);
       else await ctx.db.insert("users", doc);
     }
