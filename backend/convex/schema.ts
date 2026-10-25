@@ -149,11 +149,36 @@ export default defineSchema({
     notes: v.string(),
   }).index("by_name", ["name"]),
 
-  // Texts for the agent worker to send. The worker subscribes to unsent rows.
+  // Texts for the agent to send. The agent (cloud or local) picks up unsent rows.
   outbox: defineTable({
     phone: v.string(),
     body: v.string(),
     at: v.number(),
     sentAt: v.optional(v.number()),
+    attempts: v.optional(v.number()),
+    failed: v.optional(v.string()), // why it was given up on (sentAt is set too)
   }).index("by_unsent", ["sentAt", "at"]),
+
+  // Cloud agent (convex/cloudAgent.ts) state ---------------------------------
+  // Where to reply to each person on Photon (learned from their first text).
+  photonConversations: defineTable({
+    phone: v.string(), // normalized handle
+    spaceId: v.string(),
+    agentUserId: v.string(),
+    updatedAt: v.number(),
+  }).index("by_phone", ["phone"]),
+  // Recent agent conversation per phone (Claude message turns as JSON).
+  agentHistory: defineTable({
+    phone: v.string(),
+    turns: v.string(),
+    updatedAt: v.number(),
+  }).index("by_phone", ["phone"]),
+  // Single row: polling cursor, recently handled message ids, and a lease so
+  // only one poll runs at a time.
+  agentCursor: defineTable({
+    key: v.string(),
+    since: v.string(),
+    seen: v.array(v.string()),
+    lockedUntil: v.number(),
+  }).index("by_key", ["key"]),
 });

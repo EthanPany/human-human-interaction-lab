@@ -1,5 +1,6 @@
 // Text message agent worker. Run: npm run agent   (or AGENT_TRANSPORT=console npm run agent)
 import { ConvexClient } from "convex/browser";
+import { api } from "../convex/_generated/api";
 import { config } from "./config";
 import { Brain } from "./brain";
 import { deliverOutbox } from "./outbox";
@@ -24,6 +25,12 @@ function makeTransport(): Transport {
 
 async function main() {
   const convex = new ConvexClient(config.convexUrl);
+  const cloudEnabled = (await convex.query(api.cloudAgent.status, {})).enabled;
+  if (config.transport !== "console" && cloudEnabled) {
+    console.log("The text agent is already running in Convex (PHOTON_* set in the Convex env). Nothing to start here.");
+    console.log("Use `npm run agent:console` to chat with it in the terminal instead.");
+    process.exit(0);
+  }
   const transport = makeTransport();
   const brain = new Brain(convex);
 
@@ -38,7 +45,8 @@ async function main() {
     }
   });
 
-  deliverOutbox(convex, transport);
+  // The cloud agent owns the outbox when it's on; don't steal its texts.
+  if (!cloudEnabled) deliverOutbox(convex, transport);
   console.log(`Agent running (${transport.name}) against ${config.convexUrl}`);
 }
 
