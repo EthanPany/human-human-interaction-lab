@@ -2,6 +2,9 @@ import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { openConversation } from "./conversations";
 import { canonicalPair } from "./lib/pairs";
+import { MutationCtx } from "./_generated/server";
+import { Id } from "./_generated/dataModel";
+import { loadRubric } from "./lib/rubric";
 import { ACTIVE_WINDOW_MS, TALK_AFTER_MS, TALK_DISTANCE_M } from "./lib/constants";
 
 /**
@@ -65,8 +68,19 @@ export const reportDistance = mutation({
     }
 
     // Close long enough: open a conversation if none is open for this pair.
-    if (closeSince !== undefined && now - closeSince >= TALK_AFTER_MS) {
+    // Only matched pairs: strangers standing in line together are not a conversation.
+    if (closeSince !== undefined && now - closeSince >= TALK_AFTER_MS && (await isMatch(ctx, userId, peerId))) {
       await openConversation(ctx, pair.a, pair.b);
     }
   },
 });
+
+/** Either side's score clears the rubric threshold (same rule the badge uses). */
+async function isMatch(ctx: MutationCtx, x: Id<"users">, y: Id<"users">) {
+  const rubric = await loadRubric(ctx);
+  const [xy, yx] = await Promise.all([
+    ctx.db.query("matches").withIndex("by_pair", (q) => q.eq("viewer", x).eq("other", y)).unique(),
+    ctx.db.query("matches").withIndex("by_pair", (q) => q.eq("viewer", y).eq("other", x)).unique(),
+  ]);
+  return Math.max(xy?.score ?? 0, yx?.score ?? 0) >= rubric.threshold;
+}

@@ -44,3 +44,6 @@ export const MAX_SCORED_CANDIDATES = 24;
 
 /** Wait this long after a profile edit before re-scoring (edits come in bursts). */
 export const RESCORE_DEBOUNCE_MS = 4_000;
+
+/** The cron ends a conversation this long after it started if the pair drifted apart. */
+export const STALE_CONVERSATION_MS = 60_000;

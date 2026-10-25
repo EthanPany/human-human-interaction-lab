@@ -5,6 +5,7 @@ import { v } from "convex/values";
 import { askClaudeJSON, claudeAvailable } from "./lib/claude";
 import { log } from "./lib/activity";
 import { queueText } from "./lib/texts";
+import { PROXIMITY_FRESH_MS, STALE_CONVERSATION_MS } from "./lib/constants";
 
 /** Open a conversation for this canonical pair if one is not already open. */
 export async function openConversation(ctx: MutationCtx, a: Id<"users">, b: Id<"users">) {
@@ -29,26 +30,57 @@ export async function openConversation(ctx: MutationCtx, a: Id<"users">, b: Id<"
 export const finish = mutation({
   args: { conversationId: v.id("conversations"), transcript: v.optional(v.string()) },
   handler: async (ctx, { conversationId, transcript }) => {
-    const c = await ctx.db.get(conversationId);
-    if (!c) return;
-    const longer =
-      (transcript?.length ?? 0) > (c.transcript?.length ?? 0) ? transcript : c.transcript;
-    const firstFinish = c.endedAt === undefined;
-    await ctx.db.patch(conversationId, { endedAt: c.endedAt ?? Date.now(), transcript: longer });
+    await endConversation(ctx, conversationId, transcript);
+  },
+});
 
-    if (firstFinish) {
-      const [ua, ub] = await Promise.all([ctx.db.get(c.a), ctx.db.get(c.b)]);
-      for (const [me, them] of [[ua, ub], [ub, ua]] as const) {
-        if (!me || !them) continue;
-        await queueText(
-          ctx,
-          me.phone,
-          `Looks like you just talked with ${them.name ?? "someone"}${them.headline ? ` (${them.headline})` : ""}. Save their contact? Reply Y`,
-        );
-      }
+/** End a conversation (idempotent). Texts go out once; summary runs after uploads settle. */
+export async function endConversation(ctx: MutationCtx, conversationId: Id<"conversations">, transcript?: string) {
+  const c = await ctx.db.get(conversationId);
+  if (!c) return;
+  const longer = (transcript?.length ?? 0) > (c.transcript?.length ?? 0) ? transcript : c.transcript;
+  const firstFinish = c.endedAt === undefined;
+  await ctx.db.patch(conversationId, { endedAt: c.endedAt ?? Date.now(), transcript: longer });
+
+  if (firstFinish) {
+    const [ua, ub] = await Promise.all([ctx.db.get(c.a), ctx.db.get(c.b)]);
+    for (const [me, them] of [[ua, ub], [ub, ua]] as const) {
+      if (!me || !them) continue;
+      await queueText(
+        ctx,
+        me.phone,
+        `Looks like you just talked with ${them.name ?? "someone"}${them.headline ? ` (${them.headline})` : ""}. Save their contact? Reply Y`,
+      );
     }
-    // Summarize after the second phone has had a moment to upload too.
+  }
+  // Summarize after the second phone has had a moment to upload too.
+  if (firstFinish || transcript) {
     await ctx.scheduler.runAfter(8_000, internal.conversations.summarize, { conversationId });
+  }
+}
+
+/**
+ * Safety net (cron): end conversations whose phones stopped reporting or who
+ * are no longer close, in case an app died before calling finish.
+ */
+export const closeStale = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const open = await ctx.db
+      .query("conversations")
+      .filter((q) => q.eq(q.field("endedAt"), undefined))
+      .collect();
+    for (const c of open) {
+      if (now - c.startedAt < STALE_CONVERSATION_MS) continue;
+      const row = await ctx.db
+        .query("proximity")
+        .withIndex("by_pair", (q) => q.eq("a", c.a).eq("b", c.b))
+        .unique();
+      const fresh = row && now - row.at < PROXIMITY_FRESH_MS;
+      const stillClose = fresh && row.closeSince !== undefined;
+      if (!stillClose) await endConversation(ctx, c._id);
+    }
   },
 });
 

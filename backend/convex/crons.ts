@@ -6,4 +6,7 @@ const crons = cronJobs();
 // Heads up texts about strong matches who are at the event
 crons.interval("heads up texts", { minutes: 1 }, internal.notify.headsUps, {});
 
+// End conversations whose phones went quiet (app closed, battery died)
+crons.interval("close stale conversations", { minutes: 1 }, internal.conversations.closeStale, {});
+
 export default crons;

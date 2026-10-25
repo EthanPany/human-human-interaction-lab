@@ -45,6 +45,17 @@ export const state = query({
 
     let best: { rank: number; row: (typeof rows)[number]; score: number } | undefined;
     for (const row of rows) {
+      // The person I'm talking with always wins, so a stronger match walking
+      // by can't interrupt (and end) the conversation.
+      const latestTalk =
+        row.closeSince !== undefined && now - row.closeSince >= TALK_AFTER_MS
+          ? await ctx.db
+              .query("conversations")
+              .withIndex("by_pair", (q) => q.eq("a", row.a).eq("b", row.b))
+              .order("desc")
+              .first()
+          : null;
+      const inTalk = latestTalk !== null && latestTalk.endedAt === undefined;
       const peer = otherOf(row, userId);
       const [mine, theirs] = await Promise.all([
         ctx.db.query("matches").withIndex("by_pair", (q) => q.eq("viewer", userId).eq("other", peer)).unique(),
@@ -53,7 +64,7 @@ export const state = query({
       const score = Math.max(mine?.score ?? 0, theirs?.score ?? 0);
       if (score < rubric.threshold) continue;
       const proximity = Math.max(0, Math.min(1, (GLOW_RANGE_M - row.meters) / (GLOW_RANGE_M - TALK_DISTANCE_M)));
-      const rank = score * (0.3 + 0.7 * proximity);
+      const rank = inTalk ? 10 + score : score * (0.3 + 0.7 * proximity);
       if (!best || rank > best.rank) best = { rank, row, score };
     }
     if (!best) return base;

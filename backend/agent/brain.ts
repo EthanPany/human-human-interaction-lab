@@ -82,15 +82,24 @@ function trimHistory(turns: Turn[], max: number): Turn[] {
 export class Brain {
   private claude = new Anthropic({ apiKey: config.anthropicKey });
   private history = new Map<string, Turn[]>();
+  /** One message at a time per phone, so tool calls never interleave. */
+  private queues = new Map<string, Promise<unknown>>();
 
   constructor(private convex: ConvexClient) {}
 
   /** Handle one incoming text and return the reply to send. */
-  async reply(phone: string, text: string): Promise<string> {
+  reply(phone: string, text: string): Promise<string> {
+    const previous = this.queues.get(phone) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(() => this.replyNow(phone, text));
+    this.queues.set(phone, next);
+    return next;
+  }
+
+  private async replyNow(phone: string, text: string): Promise<string> {
     await this.convex.mutation(api.agent.ensureUser, { phone });
     const ctx = await this.convex.query(api.agent.context, { phone });
 
-    const turns = this.history.get(phone) ?? [];
+    const turns = [...(this.history.get(phone) ?? [])]; // copy: commit only on success
     turns.push({ role: "user", content: text });
 
     let answer = "";
