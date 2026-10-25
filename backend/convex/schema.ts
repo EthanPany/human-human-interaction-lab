@@ -28,12 +28,14 @@ export default defineSchema({
     lastSeenAt: v.optional(v.number()), // last time the app reported in
   }).index("by_phone", ["phone"]),
 
-  // Nearby Interaction discovery tokens (base64 of the archived NIDiscoveryToken)
+  // Nearby Interaction discovery tokens. Every NISession has its own token, so a
+  // phone makes one session per peer and publishes that session's token for them.
   nearbyTokens: defineTable({
-    userId: v.id("users"),
-    token: v.string(),
+    userId: v.id("users"), // owner of the session
+    peerId: v.id("users"), // the peer this session is for
+    token: v.string(), // base64 of the archived NIDiscoveryToken
     updatedAt: v.number(),
-  }).index("by_user", ["userId"]),
+  }).index("by_owner_peer", ["userId", "peerId"]),
 
   // Latest UWB distance per canonical pair
   proximity: defineTable({

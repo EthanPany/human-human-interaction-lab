@@ -68,6 +68,14 @@ export const updateProfile = mutation({
   },
 });
 
+/** The app calls this every 30 seconds while open: "I'm at the event". */
+export const heartbeat = mutation({
+  args: { userId: v.id("users") },
+  handler: async (ctx, { userId }) => {
+    await ctx.db.patch(userId, { lastSeenAt: Date.now() });
+  },
+});
+
 export const byPhone = internalQuery({
   args: { phone: v.string() },
   handler: async (ctx, { phone }) => {
