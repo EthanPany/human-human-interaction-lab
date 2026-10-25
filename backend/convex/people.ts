@@ -86,7 +86,10 @@ export const detail = query({
   },
 });
 
-/** For the iPhone Duo: the person I'm with right now, or my latest connection. */
+/**
+ * For the iPhone Duo: who to show when it opens. The person I'm talking with
+ * or most recently talked with or saved; heads ups and intros don't count.
+ */
 export const current = query({
   args: { userId: v.id("users") },
   handler: async (ctx, { userId }) => {
@@ -94,7 +97,7 @@ export const current = query({
       .query("activity")
       .withIndex("by_owner", (q) => q.eq("owner", userId))
       .order("desc")
-      .filter((q) => q.neq(q.field("other"), undefined))
+      .filter((q) => q.or(q.eq(q.field("kind"), "talked"), q.eq(q.field("kind"), "saved")))
       .first();
     return latest?.other ?? null;
   },
