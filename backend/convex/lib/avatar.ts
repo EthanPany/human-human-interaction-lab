@@ -10,12 +10,15 @@ export const AVATAR_COLORS = ["#FF6C6E", "#FFEA82", "#EB8FFF", "#A9F48E", "#87D9
 
 export const BADGE_LAYOUTS = ["avatar", "photo", "photoText"] as const;
 
-/** Stable but varied defaults for a new person. */
+/**
+ * Defaults for a new person: everyone starts as a blob (the team's chosen
+ * visual direction) in a varied color. Other shapes stay available in the editor.
+ */
 export function defaultAvatar(seed: string) {
   let h = 0;
   for (const ch of seed) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
   return {
-    avatarShape: AVATAR_SHAPES[h % AVATAR_SHAPES.length],
+    avatarShape: "blob" as (typeof AVATAR_SHAPES)[number],
     avatarColor: AVATAR_COLORS[(h >>> 8) % AVATAR_COLORS.length],
   };
 }
