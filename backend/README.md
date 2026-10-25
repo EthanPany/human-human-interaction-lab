@@ -53,3 +53,10 @@ At the end of the demo: `npm run end-event` sends recaps and intros.
 
 - `ANTHROPIC_API_KEY` (Convex env and `.env.local`): Claude scoring, summaries and the agent. Without it matching uses the keyword fallback.
 - `VOYAGE_API_KEY` (Convex env): semantic prefilter. With a big crowd only the 24 nearest people in both directions (they fit my needs, I fit theirs) go to Claude.
+
+
+## Where things run
+
+- **Convex cloud** (dev deployment `small-porpoise-293`): database, all server functions, crons, file storage, and the text agent. The agent polls Photon every 5 seconds (`convex/cloudAgent.ts`), answers with Claude, and sends queued texts. It turns on when `PHOTON_API_KEY` and `PHOTON_PROJECT_ID` are set in the Convex env. Nothing has to run on a laptop.
+- **Local worker** (`npm run agent`): the same agent brain (`convex/lib/agentCore.ts`) for local testing. It refuses to start while the cloud agent is on, so texts are never answered twice. `npm run agent:console` always works for chatting in the terminal.
+- **Photon shared line**: add each tester in the Photon dashboard (iMessage > Add someone to the line). They must text the agent once before it can text them.

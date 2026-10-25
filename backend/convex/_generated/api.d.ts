@@ -10,16 +10,19 @@
 
 import type * as agent from "../agent.js";
 import type * as badge from "../badge.js";
+import type * as cloudAgent from "../cloudAgent.js";
 import type * as conversations from "../conversations.js";
 import type * as crons from "../crons.js";
 import type * as event from "../event.js";
 import type * as lib_activity from "../lib/activity.js";
+import type * as lib_agentCore from "../lib/agentCore.js";
 import type * as lib_avatar from "../lib/avatar.js";
 import type * as lib_claude from "../lib/claude.js";
 import type * as lib_constants from "../lib/constants.js";
 import type * as lib_embeddings from "../lib/embeddings.js";
 import type * as lib_pairs from "../lib/pairs.js";
 import type * as lib_phone from "../lib/phone.js";
+import type * as lib_photonApi from "../lib/photonApi.js";
 import type * as lib_rescore from "../lib/rescore.js";
 import type * as lib_rubric from "../lib/rubric.js";
 import type * as lib_scoring from "../lib/scoring.js";
@@ -42,16 +45,19 @@ import type {
 declare const fullApi: ApiFromModules<{
   agent: typeof agent;
   badge: typeof badge;
+  cloudAgent: typeof cloudAgent;
   conversations: typeof conversations;
   crons: typeof crons;
   event: typeof event;
   "lib/activity": typeof lib_activity;
+  "lib/agentCore": typeof lib_agentCore;
   "lib/avatar": typeof lib_avatar;
   "lib/claude": typeof lib_claude;
   "lib/constants": typeof lib_constants;
   "lib/embeddings": typeof lib_embeddings;
   "lib/pairs": typeof lib_pairs;
   "lib/phone": typeof lib_phone;
+  "lib/photonApi": typeof lib_photonApi;
   "lib/rescore": typeof lib_rescore;
   "lib/rubric": typeof lib_rubric;
   "lib/scoring": typeof lib_scoring;
