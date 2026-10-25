@@ -14,11 +14,16 @@ export const config = {
    * "photon2": Photon 2.0 (app.beta.photon.codes), project id + API key.
    * "photon":  legacy Photon Spectrum (app.photon.codes), project id + secret.
    * "console": chat with the agent in the terminal.
-   * Defaults to photon2 when PHOTON_API_KEY is set.
+   * Defaults to photon when SPECTRUM_PROJECT_SECRET is set, else photon2.
    */
   transport: (process.env.AGENT_TRANSPORT ||
-    (process.env.PHOTON_API_KEY ? "photon2" : "photon")) as "photon2" | "photon" | "console",
+    (process.env.SPECTRUM_PROJECT_SECRET ? "photon" : process.env.PHOTON_API_KEY ? "photon2" : "photon")) as
+    | "photon2"
+    | "photon"
+    | "console",
   photonProjectId: process.env.PHOTON_PROJECT_ID,
+  /** Photon Spectrum (app.photon.codes) project, a dedicated line that can text first. */
+  spectrumProjectId: process.env.SPECTRUM_PROJECT_ID ?? process.env.PHOTON_PROJECT_ID,
   photonApiKey: process.env.PHOTON_API_KEY,
-  photonProjectSecret: process.env.PHOTON_PROJECT_SECRET,
+  photonProjectSecret: process.env.SPECTRUM_PROJECT_SECRET ?? process.env.PHOTON_PROJECT_SECRET,
 };
