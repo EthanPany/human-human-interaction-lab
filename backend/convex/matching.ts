@@ -2,7 +2,7 @@ import { action, ActionCtx, internalAction, internalMutation, internalQuery } fr
 import { internal } from "./_generated/api";
 import { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
-import { askClaudeJSON, claudeAvailable } from "./lib/claude";
+import { askClaudeJSON, claudeAvailable, objectSchema } from "./lib/claude";
 import { loadRubric } from "./lib/rubric";
 import { combine, keywordScore, pickTag, Profile } from "./lib/scoring";
 import { aboutText, embed, embeddingsAvailable, seekText } from "./lib/embeddings";
@@ -89,6 +89,22 @@ type ClaudeRow = {
   reasonForCandidate?: string;
 };
 
+const RATINGS_SCHEMA = objectSchema({
+  ratings: {
+    type: "array",
+    items: objectSchema({
+      id: { type: "string" },
+      needFitMe: { type: "number" },
+      needFitThem: { type: "number" },
+      values: { type: "number" },
+      tagForViewer: { type: "string" },
+      reasonForViewer: { type: "string" },
+      tagForCandidate: { type: "string" },
+      reasonForCandidate: { type: "string" },
+    }),
+  },
+});
+
 /** Keep a tag only if it really is one of that person's tags. */
 function validTag(tags: string[] | undefined, tag: string | undefined) {
   return tag && tags?.includes(tag) ? tag : tags?.[0];
@@ -127,7 +143,7 @@ export const scoreViewer = internalAction({
     let result: ClaudeRow[] | null = null;
     if (claudeAvailable()) {
       try {
-        result = await askClaudeJSON<ClaudeRow[]>(
+        const reply = await askClaudeJSON<{ ratings: ClaudeRow[] }>(
         `You are the matchmaker for an in-person event. Rate the viewer against each candidate.
 needFitMe: 0..1, how well the candidate can help with what the viewer is looking for.
 needFitThem: 0..1, how well the viewer can help with what the candidate is looking for.
@@ -139,10 +155,11 @@ reasonForCandidate: one short, specific sentence telling the candidate why to me
 Rubric notes from organizers: ${rubric.notes}`,
         `Viewer: ${JSON.stringify(me)}
 Candidates: ${JSON.stringify(candidates.map(toProfile))}
-Return a JSON array, one object per candidate:
-{"id","needFitMe","needFitThem","values","tagForViewer","reasonForViewer","tagForCandidate","reasonForCandidate"}.`,
-        Math.min(8000, 400 + candidates.length * 220),
+Return one rating per candidate, using the candidate's id.`,
+          RATINGS_SCHEMA,
+          Math.min(8000, 400 + candidates.length * 220),
         );
+        result = reply.ratings;
       } catch (e) {
         console.error("Claude scoring failed, using keyword fallback", e);
       }

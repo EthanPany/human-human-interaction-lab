@@ -34,24 +34,28 @@ export async function askClaude(system: string, user: string, maxTokens = 1500):
 }
 
 /**
- * Ask for JSON. Uses a forced tool call so the reply is always valid JSON
- * (free text JSON breaks on a stray quote in a sentence).
+ * Ask for JSON matching `schema` (JSON Schema, top level object, every object
+ * with additionalProperties: false). Uses structured outputs, so the reply is
+ * always valid JSON that fits the schema.
  */
-export async function askClaudeJSON<T>(system: string, user: string, maxTokens = 2000): Promise<T> {
+export async function askClaudeJSON<T>(
+  system: string,
+  user: string,
+  schema: Record<string, unknown>,
+  maxTokens = 2000,
+): Promise<T> {
   const content = await callClaude({
     max_tokens: maxTokens,
     system,
     messages: [{ role: "user", content: user }],
-    tools: [
-      {
-        name: "answer",
-        description: "Return the answer as JSON in the `data` field, in exactly the shape the user asked for.",
-        input_schema: { type: "object", properties: { data: {} }, required: ["data"] },
-      },
-    ],
-    tool_choice: { type: "tool", name: "answer" },
+    output_config: { format: { type: "json_schema", schema } },
   });
-  const call = content.find((b) => b.type === "tool_use");
-  if (!call) throw new Error("Claude returned no structured answer");
-  return (call.input as { data: T }).data;
+  const text = content.find((b) => b.type === "text")?.text;
+  if (!text) throw new Error("Claude returned no JSON");
+  return JSON.parse(text) as T;
+}
+
+/** Small helper: an object schema where every listed property is required. */
+export function objectSchema(properties: Record<string, unknown>) {
+  return { type: "object", properties, required: Object.keys(properties), additionalProperties: false };
 }

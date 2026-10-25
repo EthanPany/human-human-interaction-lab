@@ -2,7 +2,7 @@ import { action, internalAction, internalMutation, internalQuery, mutation, Muta
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import { v } from "convex/values";
-import { askClaudeJSON, claudeAvailable } from "./lib/claude";
+import { askClaudeJSON, claudeAvailable, objectSchema } from "./lib/claude";
 import { log } from "./lib/activity";
 import { queueText } from "./lib/texts";
 import { PROXIMITY_FRESH_MS, STALE_CONVERSATION_MS } from "./lib/constants";
@@ -135,7 +135,13 @@ Person B: ${JSON.stringify({ name: b?.name, headline: b?.headline, lookingFor: b
 Transcript (speakers unlabeled, may be noisy):
 ${transcript.slice(0, 12000)}
 
-Return {"summary": "2-3 sentences", "topics": ["up to 4 short topics"], "followUpForA": "one concrete follow up A could send B", "followUpForB": "one concrete follow up B could send A"}.`,
+summary: 2 to 3 sentences. topics: up to 4 short topics. followUpForA: one concrete follow up A could send B. followUpForB: one concrete follow up B could send A.`,
+      objectSchema({
+        summary: { type: "string" },
+        topics: { type: "array", items: { type: "string" } },
+        followUpForA: { type: "string" },
+        followUpForB: { type: "string" },
+      }),
     );
     await ctx.runMutation(internal.conversations.saveSummary, {
       conversationId,
