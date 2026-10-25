@@ -41,6 +41,7 @@ const FUNCTIONS: Record<string, ApiFn> = {
   "conversations:finish": conversations.finish,
   "people:list": people.list,
   "people:detail": people.detail,
+  "people:met": people.met,
   "people:current": people.current,
   // The text agent API (backend/convex/agent.ts), keyed by phone. No auth: demo only.
   "agent:context": ({ tx }, a) => agent.context(tx, str(a, "phone")),

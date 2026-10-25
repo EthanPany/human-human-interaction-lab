@@ -3,20 +3,27 @@
 /** A distance report older than this is treated as "not nearby anymore". */
 export const PROXIMITY_FRESH_MS = 20_000;
 
-/** Beyond this distance a match does not light up the badge. */
+/** A match starts to show at this distance (UWB senses roughly 10 m line of sight)... */
 export const GLOW_RANGE_M = 10;
 
-/** At or inside this distance the badge glows at full strength. */
+/** ...and is at full strength from this distance in. */
 export const FULL_GLOW_M = 3;
 
-/** Only phones whose app reported in this recently get UWB sessions. */
+/** Range only with phones whose app checked in this recently (heartbeat is 30 s). */
 export const NEARBY_ACTIVE_MS = 3 * 60 * 1000;
 
-/** Within this distance two people count as talking. */
+/** Within this distance two people count as talking (and have met). */
 export const TALK_DISTANCE_M = 1.5;
 
-/** How long they must stay that close before we call it a conversation. */
-export const TALK_AFTER_MS = 10_000;
+/**
+ * Once close, they stay close until they are this far apart. Both phones
+ * report into the same row and each reading jitters, so without this margin
+ * one reading of 1.6 m reset the timer and the conversation never started.
+ */
+export const TALK_EXIT_DISTANCE_M = 2.5;
+
+/** How long they must stay that close before we call it a conversation (and recording starts). */
+export const TALK_AFTER_MS = 5_000;
 
 /** Someone is "at the event" if their app reported in this recently. */
 export const ACTIVE_WINDOW_MS = 2 * 60 * 60 * 1000;

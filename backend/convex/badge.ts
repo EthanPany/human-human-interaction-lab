@@ -3,7 +3,7 @@ import { v } from "convex/values";
 import { loadRubric } from "./lib/rubric";
 import { otherOf, pairColor } from "./lib/pairs";
 import { avatarOf } from "./lib/avatar";
-import { FULL_GLOW_M, GLOW_RANGE_M, PROXIMITY_FRESH_MS, TALK_AFTER_MS } from "./lib/constants";
+import { FULL_GLOW_M, GLOW_RANGE_M, PROXIMITY_FRESH_MS } from "./lib/constants";
 
 /**
  * Everything the worn badge needs, as one live query. The phone subscribes and
@@ -52,7 +52,7 @@ export const state = query({
       // The person I'm talking with always wins, so a stronger match walking
       // by can't interrupt (and end) the conversation.
       const latestTalk =
-        row.closeSince !== undefined && now - row.closeSince >= TALK_AFTER_MS
+        row.closeSince !== undefined
           ? await ctx.db
               .query("conversations")
               .withIndex("by_pair", (q) => q.eq("a", row.a).eq("b", row.b))
@@ -85,9 +85,10 @@ export const state = query({
         .first(),
     ]);
 
+    // An open conversation only exists after they stayed close for TALK_AFTER_MS
+    // (nearby.reportDistance), so here it is enough that they are still close.
     const talking =
       best.row.closeSince !== undefined &&
-      now - best.row.closeSince >= TALK_AFTER_MS &&
       openConversation !== null &&
       openConversation.endedAt === undefined;
 

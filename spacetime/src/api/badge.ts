@@ -1,5 +1,5 @@
 import { avatarOf } from "../lib/avatar";
-import { FULL_GLOW_M, GLOW_RANGE_M, PROXIMITY_FRESH_MS, TALK_AFTER_MS, TALK_DISTANCE_M } from "../lib/constants";
+import { FULL_GLOW_M, GLOW_RANGE_M, PROXIMITY_FRESH_MS } from "../lib/constants";
 import { connectionOf, latestConversation, loadRubric, matchOf, nowMs, otherOf, pairColor, proximityOf } from "../lib/db";
 import { str, type Ctx } from "./context";
 
@@ -34,8 +34,7 @@ export function state({ tx }: Ctx, args: Record<string, unknown>) {
   for (const row of rows) {
     // The person I'm talking with always wins, so a stronger match walking by
     // can't interrupt (and end) the conversation.
-    const latestTalk =
-      row.closeSince !== undefined && now - row.closeSince >= TALK_AFTER_MS ? latestConversation(tx, row.a, row.b) : null;
+    const latestTalk = row.closeSince !== undefined ? latestConversation(tx, row.a, row.b) : null;
     const inTalk = latestTalk !== null && latestTalk.endedAt === undefined;
     const peer = otherOf(row, userId);
     const score = Math.max(matchOf(tx, userId, peer)?.score ?? 0, matchOf(tx, peer, userId)?.score ?? 0);
@@ -52,9 +51,10 @@ export function state({ tx }: Ctx, args: Record<string, unknown>) {
   const connection = connectionOf(tx, userId, peerId);
   const openConversation = latestConversation(tx, best.row.a, best.row.b);
 
+  // An open conversation only exists after they stayed close for TALK_AFTER_MS
+  // (nearby.reportDistance), so here it is enough that they are still close.
   const talking =
     best.row.closeSince !== undefined &&
-    now - best.row.closeSince >= TALK_AFTER_MS &&
     openConversation !== null &&
     openConversation.endedAt === undefined;
 

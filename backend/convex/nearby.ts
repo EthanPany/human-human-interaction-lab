@@ -5,7 +5,8 @@ import { canonicalPair } from "./lib/pairs";
 import { MutationCtx } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
 import { loadRubric } from "./lib/rubric";
-import { NEARBY_ACTIVE_MS, PROXIMITY_FRESH_MS, TALK_AFTER_MS, TALK_DISTANCE_M } from "./lib/constants";
+import { NEARBY_ACTIVE_MS, PROXIMITY_FRESH_MS, TALK_AFTER_MS, TALK_DISTANCE_M, TALK_EXIT_DISTANCE_M } from "./lib/constants";
+import { markMet } from "./people";
 import { isDemoPhone } from "./lib/phone";
 
 /**
@@ -65,19 +66,24 @@ export const reportDistance = mutation({
       .withIndex("by_pair", (q) => q.eq("a", pair.a).eq("b", pair.b))
       .unique();
 
-    const close = meters <= TALK_DISTANCE_M;
+    // Close within talking distance; once close, stay close until clearly apart
+    // (both phones report here and readings jitter around the threshold).
+    const wasClose = row?.closeSince !== undefined;
+    const close = meters <= TALK_DISTANCE_M || (wasClose && meters <= TALK_EXIT_DISTANCE_M);
     const closeSince = close ? (row?.closeSince ?? now) : undefined;
     if (row) {
       await ctx.db.patch(row._id, { meters, at: now, closeSince, minMeters: Math.min(row.minMeters, meters) });
     } else {
       await ctx.db.insert("proximity", { ...pair, meters, at: now, closeSince, minMeters: meters });
     }
+    if (closeSince === undefined) return;
 
+    // Only matched pairs: strangers standing in line together have not "met".
+    if (!(await isMatch(ctx, userId, peerId))) return;
+    // Just came close: they met. Each shows up in the other's People list.
+    if (!wasClose) await markMet(ctx, userId, peerId);
     // Close long enough: open a conversation if none is open for this pair.
-    // Only matched pairs: strangers standing in line together are not a conversation.
-    if (closeSince !== undefined && now - closeSince >= TALK_AFTER_MS && (await isMatch(ctx, userId, peerId))) {
-      await openConversation(ctx, pair.a, pair.b);
-    }
+    if (now - closeSince >= TALK_AFTER_MS) await openConversation(ctx, pair.a, pair.b);
   },
 });
 

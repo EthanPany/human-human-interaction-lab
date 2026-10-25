@@ -15,6 +15,7 @@ export function resetTestPair({ tx }: Ctx, args: Record<string, unknown>) {
   const [x, y] = ids;
   for (const c of [...tx.db.conversations.pair.filter(pairKey(x, y))]) tx.db.conversations.id.delete(c.id);
   tx.db.proximity.id.delete(pairKey(x, y));
+  tx.db.meetings.id.delete(pairKey(x, y));
   for (const [owner, other] of [[x, y], [y, x]]) {
     tx.db.connections.id.delete(directedKey(owner, other));
     for (const a of [...tx.db.activity.owner.filter(owner)]) if (a.other === other) tx.db.activity.id.delete(a.id);

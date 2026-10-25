@@ -1,8 +1,9 @@
-import { NEARBY_ACTIVE_MS, TALK_AFTER_MS, TALK_DISTANCE_M } from "../lib/constants";
+import { NEARBY_ACTIVE_MS, TALK_AFTER_MS, TALK_DISTANCE_M, TALK_EXIT_DISTANCE_M } from "../lib/constants";
 import { canonicalPair, directedKey, loadRubric, matchOf, nowMs, pairKey } from "../lib/db";
 import { isDemoPhone } from "../lib/phone";
 import type { Tx } from "../schema";
 import { openConversation } from "./conversations";
+import { markMet } from "./people";
 import { num, str, type Ctx } from "./context";
 
 /** Port of backend/convex/nearby.ts (Nearby Interaction tokens and distances). */
@@ -42,7 +43,10 @@ export function reportDistance({ tx }: Ctx, args: Record<string, unknown>) {
   const id = pairKey(userId, peerId);
   const row = tx.db.proximity.id.find(id);
 
-  const close = meters <= TALK_DISTANCE_M;
+  // Close within talking distance; once close, stay close until clearly apart
+  // (both phones report here and readings jitter around the threshold).
+  const wasClose = row?.closeSince !== undefined;
+  const close = meters <= TALK_DISTANCE_M || (wasClose && meters <= TALK_EXIT_DISTANCE_M);
   const closeSince = close ? (row?.closeSince ?? now) : undefined;
   if (row) {
     tx.db.proximity.id.update({ ...row, meters, at: now, closeSince, minMeters: Math.min(row.minMeters, meters) });
@@ -50,11 +54,14 @@ export function reportDistance({ tx }: Ctx, args: Record<string, unknown>) {
     tx.db.proximity.insert({ id, ...pair, meters, at: now, closeSince, minMeters: meters });
   }
 
+  if (closeSince === undefined) return null;
+
+  // Only matched pairs: strangers standing in line together have not "met".
+  if (!isMatch(tx, userId, peerId)) return null;
+  // Just came close: they met. Each shows up in the other's People list.
+  if (!wasClose) markMet(tx, userId, peerId);
   // Close long enough: open a conversation if none is open for this pair.
-  // Only matched pairs: strangers standing in line together are not a conversation.
-  if (closeSince !== undefined && now - closeSince >= TALK_AFTER_MS && isMatch(tx, userId, peerId)) {
-    openConversation(tx, pair.a, pair.b);
-  }
+  if (now - closeSince >= TALK_AFTER_MS) openConversation(tx, pair.a, pair.b);
   return null;
 }
 

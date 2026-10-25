@@ -113,6 +113,18 @@ const conversations = table(
   },
 );
 
+/** First time a matched pair came within talking distance (canonical pair). */
+const meetings = table(
+  { name: "meetings" },
+  {
+    id: t.string().primaryKey(), // `${a}|${b}`
+    a: t.string().index("btree"),
+    b: t.string().index("btree"),
+    firstAt: t.f64(),
+    lastAt: t.f64(),
+  },
+);
+
 const connections = table(
   { name: "connections" },
   {
@@ -259,6 +271,7 @@ const spacetimedb = schema(
     proximity,
     matches,
     conversations,
+    meetings,
     connections,
     activity,
     notifications,

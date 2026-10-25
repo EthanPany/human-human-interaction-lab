@@ -107,6 +107,10 @@ export function matchOf(tx: Tx, viewer: string, other: string) {
   return tx.db.matches.id.find(directedKey(viewer, other));
 }
 
+export function meetingsOf(tx: Tx, userId: string) {
+  return [...tx.db.meetings.a.filter(userId), ...tx.db.meetings.b.filter(userId)];
+}
+
 export function connectionOf(tx: Tx, owner: string, other: string) {
   return tx.db.connections.id.find(directedKey(owner, other));
 }

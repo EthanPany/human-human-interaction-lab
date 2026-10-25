@@ -105,6 +105,18 @@ export default defineSchema({
     .index("by_a", ["a"])
     .index("by_b", ["b"]),
 
+  // First time a matched pair came within talking distance (canonical pair).
+  // Both people show up in each other's People list from then on.
+  meetings: defineTable({
+    a: v.id("users"),
+    b: v.id("users"),
+    firstAt: v.number(),
+    lastAt: v.number(),
+  })
+    .index("by_pair", ["a", "b"])
+    .index("by_a", ["a"])
+    .index("by_b", ["b"]),
+
   // Saved contacts (directed: owner saved other). This is the People list.
   connections: defineTable({
     owner: v.id("users"),

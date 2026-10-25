@@ -22,6 +22,8 @@ export const resetTestPair = mutation({
       await ctx.db.delete(c._id);
     for (const p of await ctx.db.query("proximity").withIndex("by_pair", (q) => q.eq("a", a).eq("b", b)).collect())
       await ctx.db.delete(p._id);
+    for (const m of await ctx.db.query("meetings").withIndex("by_pair", (q) => q.eq("a", a).eq("b", b)).collect())
+      await ctx.db.delete(m._id);
     for (const [owner, other] of [[x, y], [y, x]] as const) {
       for (const c of await ctx.db.query("connections").withIndex("by_pair", (q) => q.eq("owner", owner).eq("other", other)).collect())
         await ctx.db.delete(c._id);

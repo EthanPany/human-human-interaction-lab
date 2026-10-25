@@ -12,11 +12,18 @@ export const FULL_GLOW_M = 3;
 /** Range only with phones whose app checked in this recently (heartbeat is 30 s). */
 export const NEARBY_ACTIVE_MS = 3 * 60 * 1000;
 
-/** Within this distance two people count as talking. */
+/** Within this distance two people count as talking (and have met). */
 export const TALK_DISTANCE_M = 1.5;
 
-/** How long they must stay that close before we call it a conversation. */
-export const TALK_AFTER_MS = 10_000;
+/**
+ * Once close, they stay close until they are this far apart. Both phones
+ * report into the same row and each reading jitters, so without this margin
+ * one reading of 1.6 m reset the timer and the conversation never started.
+ */
+export const TALK_EXIT_DISTANCE_M = 2.5;
+
+/** How long they must stay that close before we call it a conversation (and recording starts). */
+export const TALK_AFTER_MS = 5_000;
 
 /** Someone is "at the event" if their app reported in this recently. */
 export const ACTIVE_WINDOW_MS = 2 * 60 * 60 * 1000;

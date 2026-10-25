@@ -123,26 +123,33 @@ export const summarize = internalAction({
       });
       return;
     }
-    const result = await askClaudeJSON<{
-      summary: string;
-      topics: string[];
-      followUpForA: string;
-      followUpForB: string;
-    }>(
-      "You summarize short in-person networking conversations for both participants. Be concrete and brief.",
-      `Person A: ${JSON.stringify({ name: a?.name, headline: a?.headline, lookingFor: a?.lookingFor })}
+    let result: { summary: string; topics: string[]; followUpForA: string; followUpForB: string };
+    try {
+      result = await askClaudeJSON<typeof result>(
+        "You summarize short in-person networking conversations for both participants. Be concrete and brief.",
+        `Person A: ${JSON.stringify({ name: a?.name, headline: a?.headline, lookingFor: a?.lookingFor })}
 Person B: ${JSON.stringify({ name: b?.name, headline: b?.headline, lookingFor: b?.lookingFor })}
 Transcript (speakers unlabeled, may be noisy):
 ${transcript.slice(0, 12000)}
 
 summary: 2 to 3 sentences. topics: up to 4 short topics. followUpForA: one concrete follow up A could send B. followUpForB: one concrete follow up B could send A.`,
-      objectSchema({
-        summary: { type: "string" },
-        topics: { type: "array", items: { type: "string" } },
-        followUpForA: { type: "string" },
-        followUpForB: { type: "string" },
-      }),
-    );
+        objectSchema({
+          summary: { type: "string" },
+          topics: { type: "array", items: { type: "string" } },
+          followUpForA: { type: "string" },
+          followUpForB: { type: "string" },
+        }),
+      );
+    } catch (e) {
+      // Still show something on the person's profile rather than waiting forever.
+      console.error("summary failed", e);
+      await ctx.runMutation(internal.conversations.saveSummary, {
+        conversationId,
+        summary: transcript.slice(0, 280),
+        topics: [],
+      });
+      return;
+    }
     await ctx.runMutation(internal.conversations.saveSummary, {
       conversationId,
       summary: String(result.summary ?? ""),
