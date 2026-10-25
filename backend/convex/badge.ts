@@ -13,6 +13,9 @@ import { GLOW_RANGE_M, PROXIMITY_FRESH_MS, TALK_AFTER_MS, TALK_DISTANCE_M } from
  * glow:      0..1, stronger as the matched person gets closer
  * color:     shared match color (same on both badges)
  * frontTag:  MY tag that the nearby person cares about most (moves to the front)
+ * keywords:  1 to 3 short topics printed big under my name. With a match near:
+ *            what I have that they want to discuss, or what we both want to.
+ *            With nobody near: my own top tags.
  * closeness: 0..1 from distance alone (1 = talking distance), drives the avatar tint
  * peer*:     who it is, and their avatar, so the two avatars can meet on screen
  */
@@ -25,6 +28,7 @@ export const state = query({
       glow: 0,
       color: undefined as string | undefined,
       frontTag: undefined as string | undefined,
+      keywords: (me?.tags ?? []).slice(0, 3),
       peerId: undefined as string | undefined,
       peerName: undefined as string | undefined,
       peerAvatarShape: undefined as string | undefined,
@@ -95,6 +99,11 @@ export const state = query({
       glow: talking ? 1 : 0.25 + 0.75 * proximity,
       color: pairColor(userId, peerId),
       frontTag: theirView?.tag,
+      keywords: theirView?.keywords?.length
+        ? theirView.keywords
+        : theirView?.tag
+          ? [theirView.tag]
+          : base.keywords,
       peerId,
       peerName: peer?.name,
       peerAvatarShape: peerAvatar?.shape,

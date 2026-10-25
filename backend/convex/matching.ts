@@ -4,7 +4,7 @@ import { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 import { askClaudeJSON, claudeAvailable, objectSchema } from "./lib/claude";
 import { loadRubric } from "./lib/rubric";
-import { combine, keywordScore, pickTag, Profile } from "./lib/scoring";
+import { combine, keywordScore, pickTag, pickKeywords, Profile } from "./lib/scoring";
 import { aboutText, embed, embeddingsAvailable, seekText } from "./lib/embeddings";
 import { MAX_SCORED_CANDIDATES } from "./lib/constants";
 
@@ -38,7 +38,14 @@ function hasProfile(u: Doc<"users">) {
   return Boolean(u.name && (u.tags?.length || u.headline || u.lookingFor));
 }
 
-type MatchRow = { viewer: Id<"users">; other: Id<"users">; score: number; tag?: string; reason?: string };
+type MatchRow = {
+  viewer: Id<"users">;
+  other: Id<"users">;
+  score: number;
+  tag?: string;
+  reason?: string;
+  keywords?: string[];
+};
 
 type ScoringContext = {
   users: Doc<"users">[];
@@ -62,6 +69,7 @@ export const saveScores = internalMutation({
         score: v.number(),
         tag: v.optional(v.string()),
         reason: v.optional(v.string()),
+        keywords: v.optional(v.array(v.string())),
       }),
     ),
   },
@@ -87,6 +95,8 @@ type ClaudeRow = {
   reasonForViewer?: string;
   tagForCandidate?: string;
   reasonForCandidate?: string;
+  keywordsForViewer?: string[];
+  keywordsForCandidate?: string[];
 };
 
 const RATINGS_SCHEMA = objectSchema({
@@ -101,9 +111,24 @@ const RATINGS_SCHEMA = objectSchema({
       reasonForViewer: { type: "string" },
       tagForCandidate: { type: "string" },
       reasonForCandidate: { type: "string" },
+      keywordsForViewer: { type: "array", items: { type: "string" } },
+      keywordsForCandidate: { type: "array", items: { type: "string" } },
     }),
   },
 });
+
+/** Badge keywords: at most 3 short phrases of at most 5 words, no duplicates. */
+function cleanKeywords(list: unknown, fallback: string[]): string[] {
+  const out: string[] = [];
+  for (const k of Array.isArray(list) ? list : []) {
+    if (typeof k !== "string") continue;
+    const phrase = k.replace(/[.!?]+$/, "").trim();
+    if (!phrase || phrase.split(/\s+/).length > 5 || phrase.length > 32) continue;
+    if (!out.some((o) => o.toLowerCase() === phrase.toLowerCase())) out.push(phrase);
+    if (out.length === 3) break;
+  }
+  return out.length ? out : fallback.slice(0, 3);
+}
 
 /** Keep a tag only if it really is one of that person's tags. */
 function validTag(tags: string[] | undefined, tag: string | undefined) {
@@ -134,8 +159,8 @@ export const scoreViewer = internalAction({
       const them = toProfile(c);
       const forward = keywordScore(me, them, rubric);
       return [
-        { viewer: viewerId, other: c._id, ...forward },
-        { viewer: c._id, other: viewerId, score: forward.score, tag: pickTag(them, me) },
+        { viewer: viewerId, other: c._id, ...forward, keywords: pickKeywords(me, them) },
+        { viewer: c._id, other: viewerId, score: forward.score, tag: pickTag(them, me), keywords: pickKeywords(them, me) },
       ];
     };
 
@@ -152,12 +177,14 @@ tagForViewer: copy exactly ONE of the candidate's tags that the viewer would car
 reasonForViewer: one short, specific sentence telling the viewer why to meet the candidate.
 tagForCandidate: copy exactly ONE of the viewer's tags that the candidate would care about most.
 reasonForCandidate: one short, specific sentence telling the candidate why to meet the viewer.
+keywordsForViewer: 1 to 3 topics printed big on the CANDIDATE's badge so the viewer sees, from across the room, what to talk about. Each is 1 to 5 words, like "Agent design", "New grad roles", "Jobs", "Film photography". Only two kinds are allowed: something the candidate has (knows, does, offers) that the viewer wants to discuss, or something both of them want to discuss. Ground every topic in their profiles. No sentences, no names, no generic words like "Networking".
+keywordsForCandidate: the same, the other way round: topics printed on the VIEWER's badge for the candidate.
 Rubric notes from organizers: ${rubric.notes}`,
         `Viewer: ${JSON.stringify(me)}
 Candidates: ${JSON.stringify(candidates.map(toProfile))}
 Return one rating per candidate, using the candidate's id.`,
           RATINGS_SCHEMA,
-          Math.min(8000, 400 + candidates.length * 220),
+          Math.min(10000, 400 + candidates.length * 280),
         );
         result = reply.ratings;
       } catch (e) {
@@ -171,8 +198,22 @@ Return one rating per candidate, using the candidate's id.`,
         if (!r) return fallback(c);
         const score = combine(Number(r.needFitMe), Number(r.needFitThem), Number(r.values), rubric);
         return [
-          { viewer: viewerId, other: c._id, score, tag: validTag(c.tags, r.tagForViewer), reason: r.reasonForViewer },
-          { viewer: c._id, other: viewerId, score, tag: validTag(viewer.tags, r.tagForCandidate), reason: r.reasonForCandidate },
+          {
+            viewer: viewerId,
+            other: c._id,
+            score,
+            tag: validTag(c.tags, r.tagForViewer),
+            reason: r.reasonForViewer,
+            keywords: cleanKeywords(r.keywordsForViewer, pickKeywords(me, toProfile(c))),
+          },
+          {
+            viewer: c._id,
+            other: viewerId,
+            score,
+            tag: validTag(viewer.tags, r.tagForCandidate),
+            reason: r.reasonForCandidate,
+            keywords: cleanKeywords(r.keywordsForCandidate, pickKeywords(toProfile(c), me)),
+          },
         ];
       });
     } else {

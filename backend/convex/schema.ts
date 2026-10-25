@@ -81,6 +81,7 @@ export default defineSchema({
     score: v.number(), // 0..1, already reciprocal (both sides must want it)
     tag: v.optional(v.string()), // the tag of `other` that `viewer` cares about most
     reason: v.optional(v.string()), // one line "why you'd click"
+    keywords: v.optional(v.array(v.string())), // topics shown big on `other`'s badge for `viewer`
     updatedAt: v.number(),
   })
     .index("by_viewer", ["viewer", "score"])
