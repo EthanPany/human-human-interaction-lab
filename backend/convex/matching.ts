@@ -124,8 +124,10 @@ export const scoreViewer = internalAction({
     };
 
     let rows: MatchRow[];
+    let result: ClaudeRow[] | null = null;
     if (claudeAvailable()) {
-      const result = await askClaudeJSON<ClaudeRow[]>(
+      try {
+        result = await askClaudeJSON<ClaudeRow[]>(
         `You are the matchmaker for an in-person event. Rate the viewer against each candidate.
 needFitMe: 0..1, how well the candidate can help with what the viewer is looking for.
 needFitThem: 0..1, how well the viewer can help with what the candidate is looking for.
@@ -140,7 +142,12 @@ Candidates: ${JSON.stringify(candidates.map(toProfile))}
 Return a JSON array, one object per candidate:
 {"id","needFitMe","needFitThem","values","tagForViewer","reasonForViewer","tagForCandidate","reasonForCandidate"}.`,
         Math.min(8000, 400 + candidates.length * 220),
-      );
+        );
+      } catch (e) {
+        console.error("Claude scoring failed, using keyword fallback", e);
+      }
+    }
+    if (Array.isArray(result)) {
       const byId = new Map(result.map((r) => [r.id, r]));
       rows = candidates.flatMap((c): MatchRow[] => {
         const r = byId.get(c._id);
