@@ -1,7 +1,9 @@
-import { internalAction, internalMutation, internalQuery, query } from "./_generated/server";
+import { internalAction, internalMutation, internalQuery, query, type ActionCtx } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import { v } from "convex/values";
 import { agentReply, type AgentHost, type Turn } from "./lib/agentCore";
+import { AGENT_PHOTO_JPEG_BASE64 } from "./lib/agentPhoto";
+import { agentVCard, lineFor, sendAttachment, uploadAttachment } from "./lib/photonApi";
 import { normalizeHandle, openDirect, PhotonError, photonConfigured, receivedSince, sendText, setTyping, smsLine, type PhotonInbound } from "./lib/photonApi";
 import { normalizePhone } from "./lib/phone";
 
@@ -204,8 +206,9 @@ export const tick = internalAction({
         console.log(`[${phone}] ${text}`);
         await setTyping(last.spaceId, last.agentUserId, true);
         let bubbles: string[];
+        let first = false;
         try {
-          const first = await ctx.runMutation(internal.cloudAgent.firstContact, { phone });
+          first = await ctx.runMutation(internal.cloudAgent.firstContact, { phone });
           const host: AgentHost = {
             context: (p) => ctx.runQuery(api.agent.context, { phone: p }),
             ensureUser: (p) => ctx.runMutation(api.agent.ensureUser, { phone: p }),
@@ -238,6 +241,8 @@ export const tick = internalAction({
             await sendText(last.spaceId, last.agentUserId, b, `reply:${last.id}:${i}`);
           }
           console.log(`[agent -> ${phone}] ${bubbles.join(" | ")}`);
+          // First conversation: hand over the agent's contact card (name and headshot)
+          if (first) await sendContactCard(ctx, phone, last.spaceId, last.agentUserId, last.id);
         } catch (e) {
           console.error(`reply to ${phone} failed`, e);
           note(e);
@@ -311,5 +316,27 @@ export const selfTest = internalAction({
       situation: "This is their first text to you. Greet them, then start onboarding.",
     });
     return result.bubbles;
+  },
+});
+
+/** The agent's vCard for the line this person texts. Best effort: a failure never blocks a reply. */
+async function sendContactCard(ctx: ActionCtx, phone: string, spaceId: string, agentUserId: string, key: string) {
+  try {
+    const line = (await ctx.runQuery(internal.cloudAgent.agentLineFor, { phone })) ?? (await lineFor(phone));
+    if (!line) return;
+    const card = new TextEncoder().encode(agentVCard(line, AGENT_PHOTO_JPEG_BASE64));
+    const id = await uploadAttachment(card, "text/vcard", "Badge Agent.vcf", `card:${line}:${phone}`);
+    await sendAttachment(spaceId, agentUserId, id, `card:${key}`);
+    console.log(`[agent -> ${phone}] contact card for ${line}`);
+  } catch (e) {
+    console.error(`contact card for ${phone} failed`, e);
+  }
+}
+
+export const agentLineFor = internalQuery({
+  args: { phone: v.string() },
+  handler: async (ctx, { phone }) => {
+    const u = await ctx.db.query("users").withIndex("by_phone", (q) => q.eq("phone", normalizePhone(phone))).unique();
+    return u?.agentLine ?? null;
   },
 });

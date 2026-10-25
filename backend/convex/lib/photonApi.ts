@@ -160,3 +160,60 @@ export async function lineFor(handle: string): Promise<string | undefined> {
   };
   return data.assignments.find((a) => a.handle === handle)?.assignedPhoneNumber;
 }
+
+/** Upload a file (multipart/related: JSON metadata, then the bytes). Returns the attachment id. */
+export async function uploadAttachment(bytes: Uint8Array, contentType: string, filename: string, idempotencyKey: string) {
+  const boundary = `hhil${Math.random().toString(36).slice(2)}`;
+  const enc = new TextEncoder();
+  const head = enc.encode(
+    `--${boundary}\r\nContent-Type: application/json\r\n\r\n` +
+      JSON.stringify({ contentType, sizeBytes: bytes.length, filename }) +
+      `\r\n--${boundary}\r\nContent-Type: ${contentType}\r\n\r\n`,
+  );
+  const tail = enc.encode(`\r\n--${boundary}--\r\n`);
+  const body = new Uint8Array(head.length + bytes.length + tail.length);
+  body.set(head, 0);
+  body.set(bytes, head.length);
+  body.set(tail, head.length + bytes.length);
+  const res = await fetch(`${API}/v1/projects/${process.env.PHOTON_PROJECT_ID}/attachments`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.PHOTON_API_KEY}`,
+      "Content-Type": `multipart/related; boundary=${boundary}`,
+      "Content-Length": String(body.length),
+      "idempotency-key": idempotencyKey,
+    },
+    body,
+  });
+  if (!res.ok) throw new PhotonError(res.status, await res.text());
+  return ((await res.json()) as { id: string }).id;
+}
+
+export async function sendAttachment(spaceId: string, agentUserId: string, attachmentId: string, idempotencyKey: string) {
+  await call(
+    "POST",
+    "/messages",
+    { spaceId, senderId: agentUserId, content: { type: "attachment", attachmentId } },
+    { "idempotency-key": idempotencyKey },
+  );
+}
+
+/**
+ * The agent's contact card (vCard 3.0) for the line this person texts, with
+ * its name and headshot, so they can save it with one tap.
+ */
+export function agentVCard(line: string, photoBase64: string) {
+  const fold = (s: string) => s.match(/.{1,74}/g)!.join("\r\n ");
+  return [
+    "BEGIN:VCARD",
+    "VERSION:3.0",
+    "N:Agent;Badge;;;",
+    "FN:Badge Agent",
+    "ORG:Human Human Interaction Lab",
+    "NOTE:Your badge agent from Cal Hacks. Text me anytime.",
+    `TEL;type=CELL;type=VOICE;type=pref:${line}`,
+    fold(`PHOTO;ENCODING=b;TYPE=JPEG:${photoBase64}`),
+    "END:VCARD",
+    "",
+  ].join("\r\n");
+}
