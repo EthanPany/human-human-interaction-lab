@@ -87,3 +87,22 @@ export async function sendText(spaceId: string, agentUserId: string, text: strin
 export function normalizeHandle(handle: string) {
   return handle.includes("@") ? handle.toLowerCase() : handle.replace(/[^\d+]/g, "");
 }
+
+/**
+ * Put a person on the project's shared iMessage pool and return the line they
+ * should text (E.164). Idempotent per handle, so calling again is safe.
+ */
+export async function assignLine(handle: string): Promise<string | undefined> {
+  const data = (await call("POST", "/platforms/imessage/assignments", { handle }, {
+    "Idempotency-Key": `assign:${handle}`,
+  })) as { assignedPhoneNumber?: string; assignment?: { assignedPhoneNumber?: string } } | null;
+  return data?.assignedPhoneNumber ?? data?.assignment?.assignedPhoneNumber;
+}
+
+/** Existing assignment for a handle, if any. */
+export async function lineFor(handle: string): Promise<string | undefined> {
+  const data = (await call("GET", "/platforms/imessage/assignments")) as {
+    assignments: { handle: string; assignedPhoneNumber: string }[];
+  };
+  return data.assignments.find((a) => a.handle === handle)?.assignedPhoneNumber;
+}

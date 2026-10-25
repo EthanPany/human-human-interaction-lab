@@ -1,6 +1,7 @@
 import { mutation, query, internalQuery, QueryCtx } from "./_generated/server";
 import { Doc } from "./_generated/dataModel";
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
 import { normalizePhone, isValidPhone } from "./lib/phone";
 import { queueText } from "./lib/texts";
 import { avatarOf, defaultAvatar } from "./lib/avatar";
@@ -60,6 +61,7 @@ export const signIn = mutation({
         throw new Error("Wrong password");
       }
       if (args.name && !existing.name) await ctx.db.patch(existing._id, { name: args.name });
+      if (!existing.agentLine) await ctx.scheduler.runAfter(0, internal.photonAssign.ensure, { userId: existing._id });
       return existing._id;
     }
     const id = await ctx.db.insert("users", {
@@ -72,6 +74,8 @@ export const signIn = mutation({
       badgeLayout: "avatar",
       ...defaultAvatar(phone),
     });
+    // Put them on the iMessage line right away so texting the agent just works
+    await ctx.scheduler.runAfter(0, internal.photonAssign.ensure, { userId: id });
     await queueText(
       ctx,
       phone,

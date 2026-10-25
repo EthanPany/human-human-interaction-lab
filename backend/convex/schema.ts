@@ -29,6 +29,7 @@ export default defineSchema({
     recordConversations: v.optional(v.boolean()),
     lastSeenAt: v.optional(v.number()), // last time the app reported in
     profileUpdatedAt: v.optional(v.number()), // debounces re-scoring
+    agentLine: v.optional(v.string()), // this person's Photon iMessage line (assigned at sign up)
 
     // How the badge looks (see lib/avatar.ts)
     avatarShape: v.optional(v.string()), // blob | puzzle | circle | triangle | square | pill | flower
