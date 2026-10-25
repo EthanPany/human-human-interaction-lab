@@ -8,8 +8,8 @@
     "seed": "convex run seed:demo",
     "rescore": "convex run matching:rescore",
     "end-event": "convex run event:end",
-    "agent": "bun run agent/index.ts",
-    "agent:console": "AGENT_TRANSPORT=console bun run agent/index.ts",
+    "agent": "tsx --env-file=.env.local agent/index.ts",
+    "agent:console": "AGENT_TRANSPORT=console tsx --env-file=.env.local agent/index.ts",
     "typecheck": "tsc -p convex --noEmit && tsc -p . --noEmit"
   },
   "dependencies": {
@@ -19,6 +19,7 @@
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
+    "tsx": "^4.23.15",
     "typescript": "^6.0.3"
   }
 }
