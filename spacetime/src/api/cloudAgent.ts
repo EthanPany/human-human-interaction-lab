@@ -125,6 +125,8 @@ function ingest(ctx: ProcedureCtx<S>, since: string) {
   ctx.withTx((tx) => {
     const now = nowMs(tx);
     let cursor = since;
+    // Texts the previous agent version answered (its `seen` list): stored as done, never answered again.
+    const answeredBefore = new Set(tx.db.agentCursor.key.find(KEY)?.seen ?? []);
     for (const m of inbound) {
       if (m.createdAt > cursor) cursor = m.createdAt;
       if (tx.db.agentInbox.id.find(m.id)) continue;
@@ -137,7 +139,7 @@ function ingest(ctx: ProcedureCtx<S>, since: string) {
         receivedAt: now,
         spaceId: m.spaceId,
         agentUserId: m.agentUserId,
-        turnId: undefined,
+        turnId: answeredBefore.has(m.id) ? "answered-before" : undefined,
       });
       const key = normalizeHandle(phone);
       const convo = { phone: key, spaceId: m.spaceId, agentUserId: m.agentUserId, updatedAt: now };
