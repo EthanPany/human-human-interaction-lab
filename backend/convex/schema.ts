@@ -17,7 +17,9 @@ export default defineSchema({
     phone: v.string(),
     password: v.optional(v.string()), // demo only, plain text, optional
     name: v.optional(v.string()),
-    headline: v.optional(v.string()),
+    headline: v.optional(v.string()), // role or title, e.g. "Brand marketer"
+    company: v.optional(v.string()),
+    location: v.optional(v.string()), // e.g. "Vancouver, BC"
     tags: v.optional(v.array(v.string())), // badge tags: role, who you are, what you know
     lookingFor: v.optional(v.string()), // who I want to meet
     offers: v.optional(v.string()), // what I can help with
@@ -26,7 +28,32 @@ export default defineSchema({
     californiaMode: v.optional(v.boolean()),
     recordConversations: v.optional(v.boolean()),
     lastSeenAt: v.optional(v.number()), // last time the app reported in
-  }).index("by_phone", ["phone"]),
+    rangingSince: v.optional(v.number()), // set while the badge is worn full screen (UWB on)
+    profileUpdatedAt: v.optional(v.number()), // debounces re-scoring
+    agentLine: v.optional(v.string()), // this person's Photon iMessage line (assigned at sign up)
+    textsPaused: v.optional(v.boolean()), // they texted STOP: no proactive texts until START
+
+    // How the badge looks (see lib/avatar.ts)
+    avatarShape: v.optional(v.string()), // blob | puzzle | circle | triangle | square | pill | flower
+    avatarColor: v.optional(v.string()), // "#RRGGBB"
+    badgeLayout: v.optional(v.string()), // avatar | photo | photoText
+    photoId: v.optional(v.id("_storage")),
+
+    // Semantic retrieval (optional, only with VOYAGE_API_KEY, see lib/embeddings.ts)
+    seekEmbedding: v.optional(v.array(v.float64())), // who I want to meet
+    aboutEmbedding: v.optional(v.array(v.float64())), // who I am and what I offer
+  })
+    .index("by_phone", ["phone"])
+    .vectorIndex("by_about", { vectorField: "aboutEmbedding", dimensions: 1024 })
+    .vectorIndex("by_seek", { vectorField: "seekEmbedding", dimensions: 1024 }),
+
+  // Photos on a profile ("moments"), shown with hobbies in the Interests block
+  moments: defineTable({
+    owner: v.id("users"),
+    photoId: v.id("_storage"),
+    caption: v.optional(v.string()),
+    at: v.number(),
+  }).index("by_owner", ["owner", "at"]),
 
   // Nearby Interaction discovery tokens. Every NISession has its own token, so a
   // phone makes one session per peer and publishes that session's token for them.
@@ -57,6 +84,7 @@ export default defineSchema({
     score: v.number(), // 0..1, already reciprocal (both sides must want it)
     tag: v.optional(v.string()), // the tag of `other` that `viewer` cares about most
     reason: v.optional(v.string()), // one line "why you'd click"
+    keywords: v.optional(v.array(v.string())), // topics shown big on `other`'s badge for `viewer`
     updatedAt: v.number(),
   })
     .index("by_viewer", ["viewer", "score"])
@@ -73,6 +101,18 @@ export default defineSchema({
     topics: v.optional(v.array(v.string())),
     followUpForA: v.optional(v.string()),
     followUpForB: v.optional(v.string()),
+  })
+    .index("by_pair", ["a", "b"])
+    .index("by_a", ["a"])
+    .index("by_b", ["b"]),
+
+  // First time a matched pair came within talking distance (canonical pair).
+  // Both people show up in each other's People list from then on.
+  meetings: defineTable({
+    a: v.id("users"),
+    b: v.id("users"),
+    firstAt: v.number(),
+    lastAt: v.number(),
   })
     .index("by_pair", ["a", "b"])
     .index("by_a", ["a"])
@@ -125,11 +165,42 @@ export default defineSchema({
     notes: v.string(),
   }).index("by_name", ["name"]),
 
-  // Texts for the agent worker to send. The worker subscribes to unsent rows.
+  // Texts for the agent to send. The agent (cloud or local) picks up unsent rows.
   outbox: defineTable({
     phone: v.string(),
     body: v.string(),
     at: v.number(),
     sentAt: v.optional(v.number()),
-  }).index("by_unsent", ["sentAt", "at"]),
+    attempts: v.optional(v.number()),
+    failed: v.optional(v.string()), // why it was given up on (sentAt is set too)
+    kind: v.optional(v.string()), // "welcome" | undefined (heads ups, recaps, contact prompts)
+  })
+    .index("by_unsent", ["sentAt", "at"])
+    .index("by_phone", ["phone", "at"]),
+
+  // Cloud agent (convex/cloudAgent.ts) state ---------------------------------
+  // Where to reply to each person on Photon (learned from their first text).
+  photonConversations: defineTable({
+    phone: v.string(), // normalized handle
+    spaceId: v.string(),
+    agentUserId: v.string(),
+    updatedAt: v.number(),
+  }).index("by_phone", ["phone"]),
+  // Recent agent conversation per phone (Claude message turns as JSON).
+  agentHistory: defineTable({
+    phone: v.string(),
+    turns: v.string(),
+    updatedAt: v.number(),
+  }).index("by_phone", ["phone"]),
+  // Single row: polling cursor, recently handled message ids, and a lease so
+  // only one poll runs at a time.
+  agentCursor: defineTable({
+    key: v.string(),
+    since: v.string(),
+    seen: v.array(v.string()),
+    lockedUntil: v.number(),
+    lastTickAt: v.optional(v.number()), // health: last finished poll
+    lastInboundAt: v.optional(v.number()), // health: last text received
+    lastError: v.optional(v.string()), // health: last poll or send error
+  }).index("by_key", ["key"]),
 });

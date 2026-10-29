@@ -1,9 +1,15 @@
 import { cronJobs } from "convex/server";
-import { internal } from "./_generated/api";
+
+// Convex is OFF. SpacetimeDB (spacetime/, database `hhil` on Maincloud) is the
+// live backend and runs every recurring job there: heads up texts, closing
+// stale conversations and the iMessage text agent tick. All crons are removed
+// here so this deployment never answers or sends texts (that would double
+// every reply). Its data is kept. See spacetime/README.md.
+//
+// Before the switch this file ran: "heads up texts" (1 min, notify.headsUps),
+// "close stale conversations" (1 min, conversations.closeStale) and
+// "text agent" (5 s, cloudAgent.tick).
 
 const crons = cronJobs();
-
-// Heads up texts about strong matches who are at the event
-crons.interval("heads up texts", { minutes: 1 }, internal.notify.headsUps, {});
 
 export default crons;

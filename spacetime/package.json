@@ -1,0 +1,18 @@
+{
+  "name": "hhil-spacetime",
+  "private": true,
+  "type": "module",
+  "description": "SpacetimeDB version of the HHIL backend (same API as backend/convex)",
+  "scripts": {
+    "build": "spacetime build",
+    "typecheck": "tsc -p . --noEmit",
+    "sync-lib": "cp ../backend/convex/lib/scoring.ts ../backend/convex/lib/avatar.ts ../backend/convex/lib/phone.ts src/lib/",
+    "e2e": "node scripts/e2e.mjs"
+  },
+  "dependencies": {
+    "spacetimedb": "^2.13.0"
+  },
+  "devDependencies": {
+    "typescript": "~5.6.2"
+  }
+}

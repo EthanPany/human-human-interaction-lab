@@ -19,6 +19,7 @@ export type Profile = {
   id: string;
   name?: string;
   headline?: string;
+  company?: string;
   tags?: string[];
   lookingFor?: string;
   offers?: string;
@@ -79,6 +80,20 @@ export function pickTag(viewer: Profile, other: Profile): string | undefined {
   const tags = other.tags ?? [];
   const best = tags.find((t) => [...words(t)].some((w) => want.has(w)));
   return best ?? tags[0];
+}
+
+/**
+ * Fallback badge keywords shown on `other`'s badge for `viewer`: things `other`
+ * has that `viewer` is looking for, then interests both share.
+ */
+export function pickKeywords(viewer: Profile, other: Profile): string[] {
+  const want = words(viewer.lookingFor);
+  const theirs = [...(other.tags ?? []), ...(other.hobbies ?? [])];
+  const wanted = theirs.filter((t) => [...words(t)].some((w) => want.has(w)));
+  const mine = new Set([...(viewer.tags ?? []), ...(viewer.hobbies ?? [])].map((t) => t.toLowerCase()));
+  const shared = theirs.filter((t) => mine.has(t.toLowerCase()));
+  const out = [...new Set([...wanted, ...shared])];
+  return (out.length ? out : (other.tags ?? []).slice(0, 1)).slice(0, 3);
 }
 
 /** Deterministic fallback score when Claude is not available. */

@@ -1,16 +1,29 @@
 // Tuning knobs in one place.
 
 /** A distance report older than this is treated as "not nearby anymore". */
-export const PROXIMITY_FRESH_MS = 20_000;
+export const PROXIMITY_FRESH_MS = 8_000;
 
-/** Beyond this distance a match does not light up the badge. */
+/** A match starts to show at this distance (UWB senses roughly 10 m line of sight)... */
 export const GLOW_RANGE_M = 8;
 
-/** Within this distance two people count as talking. */
-export const TALK_DISTANCE_M = 1.5;
+/** ...and is at full strength from this distance in. */
+export const FULL_GLOW_M = 2;
 
-/** How long they must stay that close before we call it a conversation. */
-export const TALK_AFTER_MS = 10_000;
+/** Range only with phones whose app checked in this recently (heartbeat is 30 s). */
+export const NEARBY_ACTIVE_MS = 3 * 60 * 1000;
+
+/** Within this distance two people count as talking (and have met). */
+export const TALK_DISTANCE_M = 2;
+
+/**
+ * Once close, they stay close until they are this far apart. Both phones
+ * report into the same row and each reading jitters, so without this margin
+ * one reading of 1.6 m reset the timer and the conversation never started.
+ */
+export const TALK_EXIT_DISTANCE_M = 3;
+
+/** How long they must stay that close before we call it a conversation (and recording starts). */
+export const TALK_AFTER_MS = 1_000;
 
 /** Someone is "at the event" if their app reported in this recently. */
 export const ACTIVE_WINDOW_MS = 2 * 60 * 60 * 1000;
@@ -38,3 +51,12 @@ export const MATCH_COLORS = [
   "#C9A7F0",
   "#FF8FB8",
 ];
+
+/** With embeddings on, Claude scores at most this many candidates per viewer. */
+export const MAX_SCORED_CANDIDATES = 24;
+
+/** Wait this long after a profile edit before re-scoring (edits come in bursts). */
+export const RESCORE_DEBOUNCE_MS = 4_000;
+
+/** The cron ends a conversation this long after it started if the pair drifted apart. */
+export const STALE_CONVERSATION_MS = 60_000;

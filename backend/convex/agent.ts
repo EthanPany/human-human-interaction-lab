@@ -5,7 +5,8 @@ import { normalizePhone } from "./lib/phone";
 import { otherOf } from "./lib/pairs";
 import { DEFAULT_RUBRIC } from "./lib/constants";
 import { log } from "./lib/activity";
-import { profilePatch } from "./users";
+import { profilePatch, touchesMatching } from "./users";
+import { requestRescore } from "./lib/rescore";
 
 /**
  * The API the text agent worker uses. Everything is keyed by the phone number
@@ -24,7 +25,7 @@ export const context = query({
   args: { phone: v.string() },
   handler: async (ctx, { phone }) => {
     const user = await userByPhone(ctx, phone);
-    if (!user) return { user: null, pendingContact: null, topMatches: [] };
+    if (!user) return { user: null, missingProfileFields: [], pendingContact: null, topMatches: [], recentTexts: [] };
 
     // Most recent finished conversation that I have not saved yet.
     const convos = [
@@ -50,15 +51,57 @@ export const context = query({
       .query("matches")
       .withIndex("by_viewer", (q) => q.eq("viewer", user._id))
       .order("desc")
-      .take(3);
+      .take(5);
+    const now = Date.now();
     const topMatches = [];
     for (const m of matches) {
       const o = await ctx.db.get(m.other);
-      topMatches.push({ name: o?.name, headline: o?.headline, score: m.score, reason: m.reason });
+      if (!o) continue;
+      const saved = await ctx.db
+        .query("connections")
+        .withIndex("by_pair", (q) => q.eq("owner", user._id).eq("other", m.other))
+        .unique();
+      topMatches.push({
+        name: o.name,
+        headline: o.headline,
+        company: o.company,
+        tags: o.tags,
+        lookingFor: o.lookingFor,
+        offers: o.offers,
+        appearance: o.appearance,
+        hereNow: o.lastSeenAt !== undefined && now - o.lastSeenAt < 10 * 60_000,
+        alreadySaved: Boolean(saved),
+        score: m.score,
+        reason: m.reason,
+      });
     }
 
-    const { password, ...profile } = user;
-    return { user: profile, pendingContact, topMatches };
+    // Texts the agent sent on its own (heads ups, recaps, contact prompts), so
+    // a reply like "Y" or "yes intro me" makes sense.
+    const recentTexts = (
+      await ctx.db
+        .query("outbox")
+        .withIndex("by_phone", (q) => q.eq("phone", user.phone).gt("at", now - 12 * 3600_000))
+        .collect()
+    )
+      .filter((t) => t.sentAt !== undefined && !t.failed)
+      .slice(-6)
+      .map((t) => ({ minutesAgo: Math.round((now - t.at) / 60_000), text: t.body }));
+
+    const { password, seekEmbedding, aboutEmbedding, photoId, ...profile } = user;
+    const missing = (["name", "headline", "lookingFor", "offers", "appearance"] as const).filter(
+      (k) => !profile[k],
+    );
+    return { user: profile, missingProfileFields: missing, pendingContact, topMatches, recentTexts };
+  },
+});
+
+/** STOP / START: pause or resume texts the agent sends on its own. */
+export const setTextsPaused = mutation({
+  args: { phone: v.string(), paused: v.boolean() },
+  handler: async (ctx, { phone, paused }) => {
+    const user = await userByPhone(ctx, phone);
+    if (user) await ctx.db.patch(user._id, { textsPaused: paused });
   },
 });
 
@@ -70,7 +113,7 @@ export const ensureUser = mutation({
     if (existing) return existing._id;
     return await ctx.db.insert("users", {
       phone: normalizePhone(phone),
-      californiaMode: true,
+      californiaMode: false,
       recordConversations: true,
     });
   },
@@ -83,7 +126,7 @@ export const saveProfile = mutation({
     const user = await userByPhone(ctx, phone);
     if (!user) throw new Error("No user for this phone");
     await ctx.db.patch(user._id, patch);
-    await ctx.scheduler.runAfter(0, internal.matching.rescoreAll, {});
+    if (touchesMatching(patch)) await requestRescore(ctx, user._id);
   },
 });
 

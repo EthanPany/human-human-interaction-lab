@@ -1,0 +1,191 @@
+import { avatarOf } from "../lib/avatar";
+import { canonicalPair, connectionOf, conversationsOf, loadRubric, log, matchOf, meetingsOf, nowMs, otherOf, pairKey } from "../lib/db";
+import type { Conversation, Tx, User } from "../schema";
+import { hiddenFrom, togetherMs } from "./conversations";
+import { str, type Ctx } from "./context";
+import { encountersTogether, groupFacts, groupMatesOf } from "./groups";
+import { profilePhotoIdOf } from "./profilePhoto";
+import { sharesWith } from "./sharing";
+
+/** Port of backend/convex/people.ts (the People tab and the iPhone Duo). */
+
+/** Public profile fields only (no phone, no password). */
+function publicProfile(ctx: Ctx, u: User | null) {
+  if (!u) return null;
+  const avatar = avatarOf({ _id: u.id, avatarShape: u.avatarShape, avatarColor: u.avatarColor });
+  return {
+    id: u.id,
+    name: u.name,
+    headline: u.headline,
+    company: u.company,
+    location: u.location,
+    tags: u.tags ?? [],
+    hobbies: u.hobbies ?? [],
+    avatarShape: avatar.shape,
+    avatarColor: avatar.color,
+    photoUrl: ctx.photoUrl(u.photoId),
+    profilePhotoUrl: ctx.photoUrl(profilePhotoIdOf(ctx.tx, u.id)),
+  };
+}
+
+/**
+ * Record that a matched pair met in person (came within talking distance).
+ * Idempotent: the first time adds a "Met" line to both timelines and puts each
+ * person in the other's People list; later calls only bump lastAt.
+ */
+export function markMet(tx: Tx, x: string, y: string) {
+  if (x === y) return;
+  const { a, b } = canonicalPair(x, y);
+  const id = pairKey(a, b);
+  const now = nowMs(tx);
+  const existing = tx.db.meetings.id.find(id);
+  if (existing) {
+    if (now - existing.lastAt > 5_000) tx.db.meetings.id.update({ ...existing, lastAt: now });
+    return;
+  }
+  tx.db.meetings.insert({ id, a, b, firstAt: now, lastAt: now });
+  const ua = tx.db.users.id.find(a);
+  const ub = tx.db.users.id.find(b);
+  log(tx, a, b, "met", `Met ${ub?.name ?? "them"}`);
+  log(tx, b, a, "met", `Met ${ua?.name ?? "them"}`);
+}
+
+/** The phone calls this at the "we finally met" moment (its own UWB reading). */
+export function met({ tx }: Ctx, args: Record<string, unknown>) {
+  markMet(tx, str(args, "userId"), str(args, "otherId"));
+  return null;
+}
+
+/** My encounters with this person that I can see (pairs and groups we were in together), newest first. */
+function encountersWith(tx: Tx, userId: string, otherId: string) {
+  return encountersTogether(tx, userId, otherId)
+    .filter((c) => !hiddenFrom(tx, c, userId))
+    .sort((x, y) => y.startedAt - x.startedAt);
+}
+
+/** One encounter as the app shows it. Groups add `group: true` and the `others` who were there (groups.ts). */
+function encounterView(ctx: Ctx, c: Conversation, userId: string, otherId: string) {
+  const { tx } = ctx;
+  const e = tx.db.encounters.conversationId.find(c.id);
+  const g = groupFacts(ctx, c, userId, otherId);
+  return {
+    id: c.id,
+    startedAt: c.startedAt,
+    endedAt: c.endedAt,
+    durationMs: g.durationMs ?? togetherMs(tx, c),
+    matched: e?.matched ?? true,
+    summary: c.summary,
+    topics: c.topics ?? [],
+    followUp: g.followUp ?? (c.a === userId ? c.followUpForA : c.followUpForB),
+    group: g.group,
+    others: g.others,
+  };
+}
+
+function minutes(ms: number) {
+  const m = Math.round(ms / 60_000);
+  return m < 1 ? "under a minute" : m === 1 ? "1 min" : `${m} min`;
+}
+
+/**
+ * The People tab: everyone I saved, met in person (matches) or had an
+ * encounter with (anyone), newest first. `connectedAt` is when they joined the
+ * list; `saved` says whether I saved their contact. For search, filters and
+ * grouping in the app: `matchScore` and `matched` (the pair's score clears the
+ * rubric), `metAt` (first time together in person, missing if never),
+ * `encounterCount`, `topics` and `notes` (every summary), and the sharing flags.
+ */
+export function list(ctx: Ctx, args: Record<string, unknown>) {
+  const { tx } = ctx;
+  const userId = str(args, "userId");
+  const entries = new Map<string, { at: number; saved: boolean }>();
+  const add = (other: string, at: number, saved: boolean) => {
+    const seen = entries.get(other);
+    entries.set(other, { at: seen ? Math.min(seen.at, at) : at, saved: saved || (seen?.saved ?? false) });
+  };
+  for (const m of meetingsOf(tx, userId)) add(otherOf(m, userId), m.firstAt, false);
+  for (const c of conversationsOf(tx, userId)) if (!hiddenFrom(tx, c, userId)) add(otherOf(c, userId), c.startedAt, false);
+  for (const mate of groupMatesOf(tx, userId)) add(mate.id, mate.at, false);
+  for (const c of tx.db.connections.owner.filter(userId)) add(c.other, c.at, true);
+  const out = [];
+  const threshold = loadRubric(tx).threshold;
+  for (const [otherId, entry] of entries) {
+    const other = publicProfile(ctx, tx.db.users.id.find(otherId));
+    if (!other) continue;
+    const mine = encountersWith(tx, userId, otherId);
+    const lastSummary = mine.find((c) => c.summary)?.summary;
+    const score = Math.max(matchOf(tx, userId, otherId)?.score ?? 0, matchOf(tx, otherId, userId)?.score ?? 0);
+    const meeting = tx.db.meetings.id.find(pairKey(userId, otherId));
+    const firstTogether = mine.length ? mine[mine.length - 1].startedAt : undefined;
+    const metAt = meeting ? Math.min(meeting.firstAt, firstTogether ?? Infinity) : firstTogether;
+    const topics = [...new Set(mine.flatMap((c) => c.topics ?? []))].slice(0, 12);
+    const notes = mine.map((c) => c.summary?.trim()).filter(Boolean).join("\n").slice(0, 1500) || undefined;
+    out.push({
+      ...other,
+      connectedAt: entry.at,
+      saved: entry.saved,
+      lastSummary,
+      matchScore: score,
+      matched: score >= threshold,
+      metAt,
+      encounterCount: mine.length,
+      topics,
+      notes,
+      sharedWithMe: sharesWith(tx, otherId, userId),
+      sharedByMe: sharesWith(tx, userId, otherId),
+    });
+  }
+  return out.sort((x, y) => y.connectedAt - x.connectedAt);
+}
+
+/**
+ * One person: profile, every encounter (each with its own summary and my
+ * follow up, newest first), and the timeline. `conversation` is the latest
+ * encounter, for older apps.
+ */
+export function detail(ctx: Ctx, args: Record<string, unknown>) {
+  const { tx } = ctx;
+  const userId = str(args, "userId");
+  const otherId = str(args, "otherId");
+  const other = publicProfile(ctx, tx.db.users.id.find(otherId));
+  if (!other) return null;
+  const encounters = encountersWith(tx, userId, otherId).map((c) => encounterView(ctx, c, userId, otherId));
+  // Encounters replace the "Talked with" lines (dropped ones leave no trace)
+  const logged = [...tx.db.activity.owner.filter(userId)]
+    .filter((t) => t.other === otherId && t.kind !== "talked")
+    .map((t) => ({ kind: t.kind, text: t.text, at: t.at }));
+  const talked = encounters.map((e) => ({
+    kind: "talked",
+    text: e.endedAt === undefined ? "Talking now" : `Talked for ${minutes(e.durationMs)}`,
+    at: e.startedAt,
+  }));
+  const timeline = [...logged, ...talked].sort((x, y) => x.at - y.at);
+  const connection = connectionOf(tx, userId, otherId);
+  const meeting = tx.db.meetings.id.find(pairKey(userId, otherId));
+  const latest = encounters[0];
+  return {
+    person: other,
+    connectedAt: connection?.at,
+    saved: Boolean(connection),
+    metAt: meeting?.firstAt ?? encounters[encounters.length - 1]?.startedAt,
+    conversation: latest
+      ? { startedAt: latest.startedAt, endedAt: latest.endedAt, summary: latest.summary, topics: latest.topics, followUp: latest.followUp }
+      : null,
+    encounters,
+    timeline,
+  };
+}
+
+/**
+ * For the iPhone Duo: who to show when it opens. The person I'm talking with
+ * or most recently met, talked with or saved; heads ups and intros don't count.
+ */
+export function current({ tx }: Ctx, args: Record<string, unknown>) {
+  const userId = str(args, "userId");
+  let latest: { at: number; other?: string } | undefined;
+  for (const a of tx.db.activity.owner.filter(userId)) {
+    if (a.kind !== "met" && a.kind !== "talked" && a.kind !== "saved") continue;
+    if (!latest || a.at >= latest.at) latest = a;
+  }
+  return latest?.other ?? null;
+}
