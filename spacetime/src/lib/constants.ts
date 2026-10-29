@@ -3,27 +3,51 @@
 /** A distance report older than this is treated as "not nearby anymore". */
 export const PROXIMITY_FRESH_MS = 8_000;
 
-/** A match starts to show at this distance (UWB senses roughly 10 m line of sight)... */
-export const GLOW_RANGE_M = 8;
+/**
+ * Distance rules. The app uses the same numbers (BadgeStore in the iOS app):
+ * keep both in step.
+ *
+ * A badge reacts from the maximum ranging range: standard UWB senses about
+ * 9 m, extended UWB (iPhone 15 or later on both phones) about 50 m. Each
+ * person can lower where their badge starts responding ("Respond from" in
+ * Settings > Nearby, stored in user_prefs). A pair uses the smaller of the two,
+ * so both badges start reacting at the same distance.
+ */
+export const STANDARD_RANGE_M = 9;
+export const EXTENDED_RANGE_M = 50;
+/** The lowest "Respond from" the app offers. */
+export const MIN_RESPOND_FROM_M = 2;
 
-/** ...and is at full strength from this distance in. */
-export const FULL_GLOW_M = 2;
+/** Within this distance two people are together (they meet, recording can start). */
+export const TALK_DISTANCE_M = 1.0;
+
+/**
+ * Once together, they stay together until they are this far apart. Both
+ * phones report into the same row and each reading jitters, so without this
+ * margin one reading just past the line ended the conversation.
+ */
+export const TALK_EXIT_DISTANCE_M = 1.5;
+
+/** How long they must stay together before we call it a conversation (and recording starts). */
+export const TALK_AFTER_MS = 1_000;
+
+/** Back together within this long after parting: the same encounter continues (same record, recording appends). */
+export const REJOIN_WINDOW_MS = 5 * 60 * 1000;
+
+/** "Drop short encounters" (on by default): encounters shorter than this leave no record, summary or text. */
+export const MIN_ENCOUNTER_MS = 60 * 1000;
+
+/** How strongly a match shows, 0 at the pair's respond range up to 1 at talking distance. */
+export function closenessAt(meters: number, rangeM: number) {
+  const span = Math.max(0.1, rangeM - TALK_DISTANCE_M);
+  return Math.max(0, Math.min(1, (rangeM - meters) / span));
+}
+
+/** "You passed by" intros at the end of the event (notify.ts) count people who came within twice this. */
+export const GLOW_RANGE_M = 8;
 
 /** Range only with phones whose app checked in this recently (heartbeat is 30 s). */
 export const NEARBY_ACTIVE_MS = 3 * 60 * 1000;
-
-/** Within this distance two people count as talking (and have met). */
-export const TALK_DISTANCE_M = 2;
-
-/**
- * Once close, they stay close until they are this far apart. Both phones
- * report into the same row and each reading jitters, so without this margin
- * one reading of 1.6 m reset the timer and the conversation never started.
- */
-export const TALK_EXIT_DISTANCE_M = 3;
-
-/** How long they must stay that close before we call it a conversation (and recording starts). */
-export const TALK_AFTER_MS = 1_000;
 
 /** Someone is "at the event" if their app reported in this recently. */
 export const ACTIVE_WINDOW_MS = 2 * 60 * 60 * 1000;

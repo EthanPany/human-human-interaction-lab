@@ -1,5 +1,6 @@
 import { directedKey, pairKey } from "../lib/db";
 import { ArgError, type Ctx } from "./context";
+import { deleteConversation } from "./conversations";
 
 /** Port of backend/convex/testing.ts. Only these fictional numbers can be reset (scripts/e2e.mjs). */
 const TEST_PHONES = ["+14155550190", "+14155550191"];
@@ -13,7 +14,9 @@ export function resetTestPair({ tx }: Ctx, args: Record<string, unknown>) {
   const ids = phones.map((p) => tx.db.users.phone.find(p)?.id).filter((x): x is string => Boolean(x));
   if (ids.length !== 2) return null;
   const [x, y] = ids;
-  for (const c of [...tx.db.conversations.pair.filter(pairKey(x, y))]) tx.db.conversations.id.delete(c.id);
+  for (const c of [...tx.db.conversations.pair.filter(pairKey(x, y))]) deleteConversation(tx, c.id);
+  tx.db.extendedPairs.id.delete(pairKey(x, y));
+  for (const id of ids) tx.db.userPrefs.userId.delete(id);
   tx.db.proximity.id.delete(pairKey(x, y));
   tx.db.meetings.id.delete(pairKey(x, y));
   for (const [owner, other] of [[x, y], [y, x]]) {

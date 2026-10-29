@@ -1,7 +1,7 @@
 import type { Tx, User } from "../schema";
 import { normalizePhone } from "../lib/phone";
 import { avatarOf, defaultAvatar } from "../lib/avatar";
-import { newId, nowMs, queueText, requestRescore, scheduleLineCheck, UserError } from "../lib/db";
+import { dropsShortEncounters, newId, nowMs, queueText, requestRescore, respondFromOf, scheduleLineCheck, UserError } from "../lib/db";
 import { normalizeHandle } from "../lib/photonApi";
 import { ArgError, optStr, str, type Ctx } from "./context";
 
@@ -14,8 +14,11 @@ const STRING_FIELDS = [
 ] as const;
 const LIST_FIELDS = ["tags", "hobbies"] as const;
 const BOOL_FIELDS = ["californiaMode", "recordConversations"] as const;
-
-export type ProfilePatch = Partial<Pick<User, (typeof STRING_FIELDS)[number] | (typeof LIST_FIELDS)[number] | (typeof BOOL_FIELDS)[number]>>;
+/** respondFromM and dropShortEncounters live in the user_prefs table but use the same patch. */
+export type ProfilePatch = Partial<Pick<User, (typeof STRING_FIELDS)[number] | (typeof LIST_FIELDS)[number] | (typeof BOOL_FIELDS)[number]>> & {
+  respondFromM?: number;
+  dropShortEncounters?: boolean;
+};
 
 /** Validate a patch like the Convex `profilePatch` validator (unknown keys are rejected). */
 export function parsePatch(raw: unknown): ProfilePatch {
@@ -27,8 +30,10 @@ export function parsePatch(raw: unknown): ProfilePatch {
       if (typeof v !== "string") throw new ArgError(`patch.${k} must be a string`);
     } else if ((LIST_FIELDS as readonly string[]).includes(k)) {
       if (!Array.isArray(v) || v.some((x) => typeof x !== "string")) throw new ArgError(`patch.${k} must be a list of strings`);
-    } else if ((BOOL_FIELDS as readonly string[]).includes(k)) {
+    } else if ((BOOL_FIELDS as readonly string[]).includes(k) || k === "dropShortEncounters") {
       if (typeof v !== "boolean") throw new ArgError(`patch.${k} must be a boolean`);
+    } else if (k === "respondFromM") {
+      if (typeof v !== "number" || !Number.isFinite(v)) throw new ArgError(`patch.${k} must be a number`);
     } else {
       throw new ArgError(`patch has an unknown field ${k}`);
     }
@@ -47,7 +52,18 @@ export function touchesMatching(patch: Record<string, unknown>) {
 export function applyPatch(tx: Tx, userId: string, patch: ProfilePatch) {
   const u = tx.db.users.id.find(userId);
   if (!u) throw new UserError("No such user");
-  tx.db.users.id.update({ ...u, ...patch });
+  const { respondFromM, dropShortEncounters, ...profile } = patch;
+  if (Object.keys(profile).length) tx.db.users.id.update({ ...u, ...profile });
+  if (respondFromM !== undefined || dropShortEncounters !== undefined) {
+    const prefs = tx.db.userPrefs.userId.find(userId);
+    const row = {
+      userId,
+      respondFromM: respondFromM ?? prefs?.respondFromM,
+      dropShortEncounters: dropShortEncounters ?? prefs?.dropShortEncounters,
+    };
+    if (prefs) tx.db.userPrefs.userId.update(row);
+    else tx.db.userPrefs.insert(row);
+  }
   if (touchesMatching(patch)) requestRescore(tx, userId);
 }
 
@@ -93,6 +109,9 @@ function ownProfile(ctx: Ctx, u: User) {
     badgeLayout: u.badgeLayout ?? "avatar",
     photoUrl: ctx.photoUrl(photoId),
     hasPassword: Boolean(password),
+    // Settings > Nearby and Recording (user_prefs)
+    respondFromM: respondFromOf(ctx.tx, id),
+    dropShortEncounters: dropsShortEncounters(ctx.tx, id),
     // The Photon iMessage line this person texts (assigned on sign in, api/photonAssign.ts)
     agentLine: ctx.tx.db.agentLines.phone.find(u.phone)?.line,
     // False until they text their agent line once. The app then says

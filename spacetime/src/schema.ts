@@ -122,6 +122,64 @@ const conversations = table(
   },
 );
 
+/**
+ * Per conversation bookkeeping for encounters (one row per conversations row).
+ * A conversation is one encounter: parting and coming back together within
+ * REJOIN_WINDOW_MS reopens it, so it can have several together segments.
+ * New table instead of new columns on conversations (additive migration).
+ */
+const encounters = table(
+  { name: "encounters" },
+  {
+    conversationId: t.string().primaryKey(),
+    /** A matched pair (tint and approach cues) or two people who just stood together. */
+    matched: t.bool(),
+    /** Start of the current together segment. */
+    segmentStartedAt: t.f64(),
+    /** Time together in segments that already ended. */
+    activeMs: t.f64(),
+    /** Transcript of the segments that already ended (the current one appends to it). */
+    priorTranscript: t.string().optional(),
+    /** The longest transcript a phone sent for the current segment. */
+    segmentTranscript: t.string().optional(),
+    /** People whose "Drop short encounters" hid this one (too short). Both: no record at all. */
+    hiddenFor: t.array(t.string()),
+  },
+);
+
+/** California mode consent: one row per person per conversation (`${conversationId}|${userId}`). */
+const recordingConsents = table(
+  { name: "recording_consents" },
+  {
+    id: t.string().primaryKey(),
+    conversationId: t.string().index("btree"),
+    userId: t.string(),
+    agree: t.bool(),
+    at: t.f64(),
+  },
+);
+
+/** Per person settings that are not profile fields (users:me returns them, users:updateProfile sets them). */
+const userPrefs = table(
+  { name: "user_prefs" },
+  {
+    userId: t.string().primaryKey(),
+    /** Where my badge starts responding, meters. Missing: the maximum range. */
+    respondFromM: t.f64().optional(),
+    /** Missing: on. */
+    dropShortEncounters: t.bool().optional(),
+  },
+);
+
+/** Pairs whose phones range with extended UWB right now (canonical pair key). */
+const extendedPairs = table(
+  { name: "extended_pairs" },
+  {
+    id: t.string().primaryKey(),
+    at: t.f64(),
+  },
+);
+
 /** First time a matched pair came within talking distance (canonical pair). */
 const meetings = table(
   { name: "meetings" },
@@ -379,6 +437,10 @@ const spacetimedb = schema(
     proximity,
     matches,
     conversations,
+    encounters,
+    recordingConsents,
+    userPrefs,
+    extendedPairs,
     meetings,
     connections,
     activity,
@@ -427,3 +489,4 @@ export type S = InferSchema<typeof spacetimedb>;
 export type Tx = ReducerCtx<S>;
 export type User = NonNullable<ReturnType<Tx["db"]["users"]["id"]["find"]>>;
 export type Conversation = NonNullable<ReturnType<Tx["db"]["conversations"]["id"]["find"]>>;
+export type Encounter = NonNullable<ReturnType<Tx["db"]["encounters"]["conversationId"]["find"]>>;

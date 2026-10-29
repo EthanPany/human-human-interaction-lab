@@ -1,6 +1,7 @@
 import { avatarOf } from "../lib/avatar";
-import { canonicalPair, connectionOf, latestConversation, log, meetingsOf, nowMs, otherOf, pairKey } from "../lib/db";
-import type { Tx, User } from "../schema";
+import { canonicalPair, connectionOf, conversationsOf, log, meetingsOf, nowMs, otherOf, pairKey } from "../lib/db";
+import type { Conversation, Tx, User } from "../schema";
+import { hiddenFrom, togetherMs } from "./conversations";
 import { str, type Ctx } from "./context";
 
 /** Port of backend/convex/people.ts (the People tab and the iPhone Duo). */
@@ -51,57 +52,94 @@ export function met({ tx }: Ctx, args: Record<string, unknown>) {
   return null;
 }
 
+/** My encounters with this person that I can see, newest first. */
+function encountersWith(tx: Tx, userId: string, otherId: string) {
+  return [...tx.db.conversations.pair.filter(pairKey(userId, otherId))]
+    .filter((c) => !hiddenFrom(tx, c, userId))
+    .sort((x, y) => y.startedAt - x.startedAt);
+}
+
+/** One encounter as the app shows it. */
+function encounterView(tx: Tx, c: Conversation, userId: string) {
+  const e = tx.db.encounters.conversationId.find(c.id);
+  return {
+    id: c.id,
+    startedAt: c.startedAt,
+    endedAt: c.endedAt,
+    durationMs: togetherMs(tx, c),
+    matched: e?.matched ?? true,
+    summary: c.summary,
+    topics: c.topics ?? [],
+    followUp: c.a === userId ? c.followUpForA : c.followUpForB,
+  };
+}
+
+function minutes(ms: number) {
+  const m = Math.round(ms / 60_000);
+  return m < 1 ? "under a minute" : m === 1 ? "1 min" : `${m} min`;
+}
+
 /**
- * The People tab: everyone I saved or met in person, newest first.
- * `connectedAt` is when they joined the list (saved, or first met); `saved`
- * says whether I saved their contact.
+ * The People tab: everyone I saved, met in person (matches) or had an
+ * encounter with (anyone), newest first. `connectedAt` is when they joined the
+ * list; `saved` says whether I saved their contact.
  */
 export function list(ctx: Ctx, args: Record<string, unknown>) {
   const { tx } = ctx;
   const userId = str(args, "userId");
   const entries = new Map<string, { at: number; saved: boolean }>();
-  for (const m of meetingsOf(tx, userId)) entries.set(otherOf(m, userId), { at: m.firstAt, saved: false });
-  for (const c of tx.db.connections.owner.filter(userId)) {
-    const seen = entries.get(c.other);
-    entries.set(c.other, { at: seen ? Math.min(seen.at, c.at) : c.at, saved: true });
-  }
+  const add = (other: string, at: number, saved: boolean) => {
+    const seen = entries.get(other);
+    entries.set(other, { at: seen ? Math.min(seen.at, at) : at, saved: saved || (seen?.saved ?? false) });
+  };
+  for (const m of meetingsOf(tx, userId)) add(otherOf(m, userId), m.firstAt, false);
+  for (const c of conversationsOf(tx, userId)) if (!hiddenFrom(tx, c, userId)) add(otherOf(c, userId), c.startedAt, false);
+  for (const c of tx.db.connections.owner.filter(userId)) add(c.other, c.at, true);
   const out = [];
   for (const [otherId, entry] of entries) {
     const other = publicProfile(ctx, tx.db.users.id.find(otherId));
     if (!other) continue;
-    const convo = latestConversation(tx, userId, otherId);
-    out.push({ ...other, connectedAt: entry.at, saved: entry.saved, lastSummary: convo?.summary });
+    const lastSummary = encountersWith(tx, userId, otherId).find((c) => c.summary)?.summary;
+    out.push({ ...other, connectedAt: entry.at, saved: entry.saved, lastSummary });
   }
   return out.sort((x, y) => y.connectedAt - x.connectedAt);
 }
 
-/** One person: profile, latest conversation summary, my follow up, timeline. */
+/**
+ * One person: profile, every encounter (each with its own summary and my
+ * follow up, newest first), and the timeline. `conversation` is the latest
+ * encounter, for older apps.
+ */
 export function detail(ctx: Ctx, args: Record<string, unknown>) {
   const { tx } = ctx;
   const userId = str(args, "userId");
   const otherId = str(args, "otherId");
   const other = publicProfile(ctx, tx.db.users.id.find(otherId));
   if (!other) return null;
-  const pair = canonicalPair(userId, otherId);
-  const convo = latestConversation(tx, userId, otherId);
-  const timeline = [...tx.db.activity.owner.filter(userId)].filter((t) => t.other === otherId).sort((x, y) => x.at - y.at);
+  const encounters = encountersWith(tx, userId, otherId).map((c) => encounterView(tx, c, userId));
+  // Encounters replace the "Talked with" lines (dropped ones leave no trace)
+  const logged = [...tx.db.activity.owner.filter(userId)]
+    .filter((t) => t.other === otherId && t.kind !== "talked")
+    .map((t) => ({ kind: t.kind, text: t.text, at: t.at }));
+  const talked = encounters.map((e) => ({
+    kind: "talked",
+    text: e.endedAt === undefined ? "Talking now" : `Talked for ${minutes(e.durationMs)}`,
+    at: e.startedAt,
+  }));
+  const timeline = [...logged, ...talked].sort((x, y) => x.at - y.at);
   const connection = connectionOf(tx, userId, otherId);
   const meeting = tx.db.meetings.id.find(pairKey(userId, otherId));
+  const latest = encounters[0];
   return {
     person: other,
     connectedAt: connection?.at,
     saved: Boolean(connection),
-    metAt: meeting?.firstAt,
-    conversation: convo
-      ? {
-          startedAt: convo.startedAt,
-          endedAt: convo.endedAt,
-          summary: convo.summary,
-          topics: convo.topics ?? [],
-          followUp: pair.a === userId ? convo.followUpForA : convo.followUpForB,
-        }
+    metAt: meeting?.firstAt ?? encounters[encounters.length - 1]?.startedAt,
+    conversation: latest
+      ? { startedAt: latest.startedAt, endedAt: latest.endedAt, summary: latest.summary, topics: latest.topics, followUp: latest.followUp }
       : null,
-    timeline: timeline.map((t) => ({ kind: t.kind, text: t.text, at: t.at })),
+    encounters,
+    timeline,
   };
 }
 

@@ -1,6 +1,13 @@
 import { ScheduleAt } from "spacetimedb";
 import type { Conversation, Tx } from "../schema";
-import { DEFAULT_RUBRIC, MATCH_COLORS, RESCORE_DEBOUNCE_MS } from "./constants";
+import {
+  DEFAULT_RUBRIC,
+  EXTENDED_RANGE_M,
+  MATCH_COLORS,
+  MIN_RESPOND_FROM_M,
+  RESCORE_DEBOUNCE_MS,
+  STANDARD_RANGE_M,
+} from "./constants";
 import { isDemoPhone } from "./phone";
 
 /** Helpers shared by the API files (ports of convex/lib/{pairs,activity,texts,rubric,rescore}.ts). */
@@ -146,6 +153,40 @@ export function meetingsOf(tx: Tx, userId: string) {
 
 export function connectionOf(tx: Tx, owner: string, other: string) {
   return tx.db.connections.id.find(directedKey(owner, other));
+}
+
+/** Either side's score clears the rubric threshold (a match: tint and approach cues). */
+export function isMatchPair(tx: Tx, x: string, y: string) {
+  const score = Math.max(matchOf(tx, x, y)?.score ?? 0, matchOf(tx, y, x)?.score ?? 0);
+  return score >= loadRubric(tx).threshold;
+}
+
+// Per person settings ----------------------------------------------------------
+
+/** Where this person's badge starts responding (meters). Default: the maximum. */
+export function respondFromOf(tx: Tx, userId: string) {
+  const v = tx.db.userPrefs.userId.find(userId)?.respondFromM;
+  return v === undefined ? EXTENDED_RANGE_M : Math.max(MIN_RESPOND_FROM_M, Math.min(EXTENDED_RANGE_M, v));
+}
+
+/** "Drop short encounters", on unless they turned it off. */
+export function dropsShortEncounters(tx: Tx, userId: string) {
+  return tx.db.userPrefs.userId.find(userId)?.dropShortEncounters ?? true;
+}
+
+/**
+ * Where a pair's badges start reacting: the smaller "Respond from" of the two,
+ * never past what their UWB can sense (about 9 m, 50 m with extended range).
+ */
+export function pairRangeM(tx: Tx, x: string, y: string) {
+  const cap = tx.db.extendedPairs.id.find(pairKey(x, y)) ? EXTENDED_RANGE_M : STANDARD_RANGE_M;
+  return Math.min(cap, respondFromOf(tx, x), respondFromOf(tx, y));
+}
+
+/** The pair's open conversation, if any. */
+export function openConversationOf(tx: Tx, x: string, y: string) {
+  const c = latestConversation(tx, x, y);
+  return c && c.endedAt === undefined ? c : null;
 }
 
 /** Throw a message the app shows as is. */

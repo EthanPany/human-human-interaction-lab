@@ -8,6 +8,9 @@ export function summarizeConversation(ctx: ProcedureCtx<S>, conversationId: stri
   const data = ctx.withTx((tx) => {
     const c = tx.db.conversations.id.find(conversationId);
     if (!c) return null;
+    // Dropped by both ("Drop short encounters"): no summary. Reopened since: summarize when it ends again.
+    if ((tx.db.encounters.conversationId.find(conversationId)?.hiddenFor.length ?? 0) >= 2) return null;
+    if (c.endedAt === undefined) return null;
     return { c, a: tx.db.users.id.find(c.a), b: tx.db.users.id.find(c.b) };
   });
   if (!data) return;
