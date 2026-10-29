@@ -9,6 +9,8 @@ import * as conversations from "./api/conversations";
 import * as people from "./api/people";
 import * as agent from "./api/agent";
 import * as location from "./api/location";
+import * as sharing from "./api/sharing";
+import { setProfilePhoto } from "./api/profilePhoto";
 import { resetTestPair } from "./api/testing";
 import { num, optStr, str } from "./api/context";
 
@@ -50,6 +52,19 @@ const FUNCTIONS: Record<string, ApiFn> = {
   "people:current": people.current,
   "location:report": location.report,
   "location:clear": location.clear,
+  // Profile photo (People rows and pages) and contact sharing (api/sharing.ts)
+  "users:setProfilePhoto": setProfilePhoto,
+  "sharing:items": sharing.items,
+  "sharing:saveItem": sharing.saveItem,
+  "sharing:removeItem": sharing.removeItem,
+  "sharing:reorder": sharing.reorder,
+  "sharing:request": sharing.request,
+  "sharing:respond": sharing.respond,
+  "sharing:cancel": sharing.cancel,
+  "sharing:revoke": sharing.revoke,
+  "sharing:handshake": sharing.handshake,
+  "sharing:inbox": sharing.inbox,
+  "sharing:with": sharing.withPerson,
   // The text agent API (backend/convex/agent.ts), keyed by phone. No auth: demo only.
   "agent:context": ({ tx }, a) => agent.context(tx, str(a, "phone")),
   "agent:ensureUser": ({ tx }, a) => agent.ensureUser(tx, str(a, "phone")),

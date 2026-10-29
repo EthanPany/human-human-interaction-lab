@@ -4,6 +4,7 @@ import { avatarOf, defaultAvatar } from "../lib/avatar";
 import { dropsShortEncounters, newId, nowMs, queueText, requestRescore, respondFromOf, scheduleLineCheck, UserError } from "../lib/db";
 import { normalizeHandle } from "../lib/photonApi";
 import { ArgError, optStr, str, type Ctx } from "./context";
+import { profilePhotoIdOf } from "./profilePhoto";
 
 /** Port of backend/convex/users.ts. */
 
@@ -108,6 +109,8 @@ function ownProfile(ctx: Ctx, u: User) {
     avatarColor: avatar.color,
     badgeLayout: u.badgeLayout ?? "avatar",
     photoUrl: ctx.photoUrl(photoId),
+    // Square profile photo (users:setProfilePhoto), separate from the badge photo
+    profilePhotoUrl: ctx.photoUrl(profilePhotoIdOf(ctx.tx, id)),
     hasPassword: Boolean(password),
     // Settings > Nearby and Recording (user_prefs)
     respondFromM: respondFromOf(ctx.tx, id),

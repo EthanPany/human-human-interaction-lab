@@ -22,6 +22,7 @@ import {
 } from "../lib/photonApi";
 import * as agent from "./agent";
 import { followUpText } from "./followUp";
+import { shareNudgeStillUseful } from "./sharing";
 
 /**
  * Port of backend/convex/cloudAgent.ts. A schedule table runs `tick` every 5 seconds:
@@ -401,6 +402,10 @@ function readyTexts(tx: Tx): Ready[] {
     const meta = tx.db.outboxMeta.outboxId.find(t.id);
     if (meta?.expiresAt !== undefined && now > meta.expiresAt) {
       markText(tx, t.id, true, "stale: held too long to still be useful");
+      continue;
+    }
+    if (meta?.kind === "share" && !shareNudgeStillUseful(tx, t.id)) {
+      markText(tx, t.id, true, "share request already answered");
       continue;
     }
     let body = t.body;

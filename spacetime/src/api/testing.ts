@@ -1,6 +1,7 @@
 import { directedKey, pairKey } from "../lib/db";
 import { ArgError, type Ctx } from "./context";
 import { deleteConversation } from "./conversations";
+import { resetSharing } from "./sharing";
 
 /** Port of backend/convex/testing.ts. Only these fictional numbers can be reset (scripts/e2e.mjs). */
 const TEST_PHONES = ["+14155550190", "+14155550191"];
@@ -23,6 +24,7 @@ export function resetTestPair({ tx }: Ctx, args: Record<string, unknown>) {
   tx.db.bleSightings.id.delete(directedKey(x, y));
   tx.db.bleSightings.id.delete(directedKey(y, x));
   tx.db.meetings.id.delete(pairKey(x, y));
+  resetSharing(tx, x, y);
   for (const [owner, other] of [[x, y], [y, x]]) {
     tx.db.connections.id.delete(directedKey(owner, other));
     for (const a of [...tx.db.activity.owner.filter(owner)]) if (a.other === other) tx.db.activity.id.delete(a.id);

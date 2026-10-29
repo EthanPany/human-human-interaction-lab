@@ -1,4 +1,5 @@
 import { schema, table, t, type InferSchema, type ReducerCtx } from "spacetimedb/server";
+import { sharingTables } from "./sharingTables";
 
 /**
  * Data model, mirroring backend/convex/schema.ts.
@@ -505,6 +506,8 @@ const spacetimedb = schema(
     rescoreJob,
     rescoreAllJob,
     photonAssignJob,
+    // Contact sharing and profile photos (sharingTables.ts)
+    ...sharingTables,
   },
   {
     // Secrets and settings, set with `spacetime publish` (see README).
