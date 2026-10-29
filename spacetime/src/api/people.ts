@@ -3,6 +3,7 @@ import { canonicalPair, connectionOf, conversationsOf, loadRubric, log, matchOf,
 import type { Conversation, Tx, User } from "../schema";
 import { hiddenFrom, togetherMs } from "./conversations";
 import { str, type Ctx } from "./context";
+import { encountersTogether, groupFacts, groupMatesOf } from "./groups";
 import { profilePhotoIdOf } from "./profilePhoto";
 import { sharesWith } from "./sharing";
 
@@ -55,25 +56,29 @@ export function met({ tx }: Ctx, args: Record<string, unknown>) {
   return null;
 }
 
-/** My encounters with this person that I can see, newest first. */
+/** My encounters with this person that I can see (pairs and groups we were in together), newest first. */
 function encountersWith(tx: Tx, userId: string, otherId: string) {
-  return [...tx.db.conversations.pair.filter(pairKey(userId, otherId))]
+  return encountersTogether(tx, userId, otherId)
     .filter((c) => !hiddenFrom(tx, c, userId))
     .sort((x, y) => y.startedAt - x.startedAt);
 }
 
-/** One encounter as the app shows it. */
-function encounterView(tx: Tx, c: Conversation, userId: string) {
+/** One encounter as the app shows it. Groups add `group: true` and the `others` who were there (groups.ts). */
+function encounterView(ctx: Ctx, c: Conversation, userId: string, otherId: string) {
+  const { tx } = ctx;
   const e = tx.db.encounters.conversationId.find(c.id);
+  const g = groupFacts(ctx, c, userId, otherId);
   return {
     id: c.id,
     startedAt: c.startedAt,
     endedAt: c.endedAt,
-    durationMs: togetherMs(tx, c),
+    durationMs: g.durationMs ?? togetherMs(tx, c),
     matched: e?.matched ?? true,
     summary: c.summary,
     topics: c.topics ?? [],
-    followUp: c.a === userId ? c.followUpForA : c.followUpForB,
+    followUp: g.followUp ?? (c.a === userId ? c.followUpForA : c.followUpForB),
+    group: g.group,
+    others: g.others,
   };
 }
 
@@ -100,6 +105,7 @@ export function list(ctx: Ctx, args: Record<string, unknown>) {
   };
   for (const m of meetingsOf(tx, userId)) add(otherOf(m, userId), m.firstAt, false);
   for (const c of conversationsOf(tx, userId)) if (!hiddenFrom(tx, c, userId)) add(otherOf(c, userId), c.startedAt, false);
+  for (const mate of groupMatesOf(tx, userId)) add(mate.id, mate.at, false);
   for (const c of tx.db.connections.owner.filter(userId)) add(c.other, c.at, true);
   const out = [];
   const threshold = loadRubric(tx).threshold;
@@ -143,7 +149,7 @@ export function detail(ctx: Ctx, args: Record<string, unknown>) {
   const otherId = str(args, "otherId");
   const other = publicProfile(ctx, tx.db.users.id.find(otherId));
   if (!other) return null;
-  const encounters = encountersWith(tx, userId, otherId).map((c) => encounterView(tx, c, userId));
+  const encounters = encountersWith(tx, userId, otherId).map((c) => encounterView(ctx, c, userId, otherId));
   // Encounters replace the "Talked with" lines (dropped ones leave no trace)
   const logged = [...tx.db.activity.owner.filter(userId)]
     .filter((t) => t.other === otherId && t.kind !== "talked")

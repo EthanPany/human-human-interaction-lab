@@ -2,6 +2,7 @@ import { directedKey, pairKey } from "../lib/db";
 import { ArgError, type Ctx } from "./context";
 import { deleteConversation } from "./conversations";
 import { resetSharing } from "./sharing";
+import type { Tx } from "../schema";
 
 /** Port of backend/convex/testing.ts. Only these fictional numbers can be reset (scripts/e2e.mjs). */
 const TEST_PHONES = ["+14155550190", "+14155550191"];
@@ -30,4 +31,37 @@ export function resetTestPair({ tx }: Ctx, args: Record<string, unknown>) {
     for (const a of [...tx.db.activity.owner.filter(owner)]) if (a.other === other) tx.db.activity.id.delete(a.id);
   }
   return null;
+}
+
+/** The e2e group test's fictional attendees (scripts/e2e.mjs: three phones meet as a group). */
+const TEST_GROUP_PHONES = ["+14155550193", "+14155550194", "+14155550195", "+14155550196"];
+
+/** testing:resetTestGroup {phones}: forget everything between these test users, groups included. */
+export function resetTestGroup({ tx }: Ctx, args: Record<string, unknown>) {
+  const phones = args.phones;
+  if (!Array.isArray(phones) || phones.length < 2 || !phones.every((p) => TEST_GROUP_PHONES.includes(p))) {
+    throw new ArgError("Test numbers only");
+  }
+  const ids = phones.map((p) => tx.db.users.phone.find(p)?.id).filter((x): x is string => Boolean(x));
+  for (const id of ids) {
+    for (const m of [...tx.db.encounterMembers.userId.filter(id)]) deleteConversation(tx, m.conversationId);
+    for (const c of [...tx.db.conversations.a.filter(id), ...tx.db.conversations.b.filter(id)]) deleteConversation(tx, c.id);
+    tx.db.userPrefs.userId.delete(id);
+  }
+  for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++) forgetPair(tx, ids[i], ids[j]);
+  return null;
+}
+
+function forgetPair(tx: Tx, x: string, y: string) {
+  tx.db.extendedPairs.id.delete(pairKey(x, y));
+  tx.db.proximity.id.delete(pairKey(x, y));
+  tx.db.pairReadings.id.delete(directedKey(x, y));
+  tx.db.pairReadings.id.delete(directedKey(y, x));
+  tx.db.bleSightings.id.delete(directedKey(x, y));
+  tx.db.bleSightings.id.delete(directedKey(y, x));
+  tx.db.meetings.id.delete(pairKey(x, y));
+  for (const [owner, other] of [[x, y], [y, x]]) {
+    tx.db.connections.id.delete(directedKey(owner, other));
+    for (const a of [...tx.db.activity.owner.filter(owner)]) if (a.other === other) tx.db.activity.id.delete(a.id);
+  }
 }

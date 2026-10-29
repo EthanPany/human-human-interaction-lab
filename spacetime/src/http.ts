@@ -10,8 +10,9 @@ import * as people from "./api/people";
 import * as agent from "./api/agent";
 import * as location from "./api/location";
 import * as sharing from "./api/sharing";
+import * as groups from "./api/groups";
 import { setProfilePhoto } from "./api/profilePhoto";
-import { resetTestPair } from "./api/testing";
+import { resetTestGroup, resetTestPair } from "./api/testing";
 import { num, optStr, str } from "./api/context";
 
 /**
@@ -50,6 +51,9 @@ const FUNCTIONS: Record<string, ApiFn> = {
   "people:detail": people.detail,
   "people:met": people.met,
   "people:current": people.current,
+  // Group encounters, three or more together (api/groups.ts)
+  "groups:list": groups.list,
+  "groups:detail": groups.detail,
   "location:report": location.report,
   "location:clear": location.clear,
   // Profile photo (People rows and pages) and contact sharing (api/sharing.ts)
@@ -74,6 +78,7 @@ const FUNCTIONS: Record<string, ApiFn> = {
     agent.addFeedback(tx, str(a, "phone"), str(a, "note"), a.rating === undefined ? undefined : num(a, "rating"), optStr(a, "otherName")),
   "agent:updateRubricNotes": ({ tx }, a) => agent.updateRubricNotes(tx, str(a, "notes")),
   "testing:resetTestPair": resetTestPair,
+  "testing:resetTestGroup": resetTestGroup,
 };
 
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
