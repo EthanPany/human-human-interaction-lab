@@ -8,6 +8,7 @@ import * as nearby from "./api/nearby";
 import * as conversations from "./api/conversations";
 import * as people from "./api/people";
 import * as agent from "./api/agent";
+import * as location from "./api/location";
 import { resetTestPair } from "./api/testing";
 import { num, optStr, str } from "./api/context";
 
@@ -44,6 +45,8 @@ const FUNCTIONS: Record<string, ApiFn> = {
   "people:detail": people.detail,
   "people:met": people.met,
   "people:current": people.current,
+  "location:report": location.report,
+  "location:clear": location.clear,
   // The text agent API (backend/convex/agent.ts), keyed by phone. No auth: demo only.
   "agent:context": ({ tx }, a) => agent.context(tx, str(a, "phone")),
   "agent:ensureUser": ({ tx }, a) => agent.ensureUser(tx, str(a, "phone")),

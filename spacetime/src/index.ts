@@ -5,6 +5,7 @@ import { closeStale } from "./api/conversations";
 import { endEvent, headsUps } from "./api/notify";
 import { profileChanged, rescoreAll as rescoreEveryone } from "./api/matching";
 import { summarizeConversation } from "./api/summarize";
+import { purgeExpired } from "./api/location";
 import { sendCard, tick } from "./api/cloudAgent";
 import { backfill, ensure, setLine } from "./api/photonAssign";
 import { seedDemo, seedTestPair } from "./api/seed";
@@ -36,10 +37,11 @@ export const ensureJobs = spacetimedb.reducer((ctx) => ensureJobsIn(ctx));
 
 // Recurring ------------------------------------------------------------------
 
-/** Every minute: heads up texts, then end conversations whose phones went quiet. */
+/** Every minute: heads up texts, end conversations whose phones went quiet, forget old coarse locations. */
 export const everyMinute = spacetimedb.reducer({ onSchedule: minuteJob }, { arg: minuteJob.rowType }, (ctx) => {
   headsUps(ctx);
   closeStale(ctx);
+  purgeExpired(ctx);
 });
 
 /** Every 5 seconds: the Photon text agent (no-op until its env is set). */

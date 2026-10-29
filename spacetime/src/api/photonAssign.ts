@@ -2,6 +2,7 @@ import type { ProcedureCtx } from "spacetimedb/server";
 import type { S, Tx } from "../schema";
 import { nowMs, pendingWelcome, scheduleLineCheck } from "../lib/db";
 import { isDemoPhone, normalizePhone } from "../lib/phone";
+import { noteUnsolicited } from "./cloudAgent";
 import { assignLine, lineFor, needsInboundFirst, normalizeHandle, openDirect, photonConfigured, sendText } from "../lib/photonApi";
 
 /**
@@ -55,6 +56,7 @@ export function ensure(ctx: ProcedureCtx<S>, userId: string) {
       else tx.db.photonConversations.insert(row);
       const w = tx.db.outbox.id.find(welcome.id);
       if (w) tx.db.outbox.id.update({ ...w, sent: true, sentAt: nowMs(tx) });
+      noteUnsolicited(tx, u.phone);
     });
   } catch (e) {
     if (needsInboundFirst(e)) console.log(`welcome for ${u.phone} waits for their first text (shared line)`);

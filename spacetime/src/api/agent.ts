@@ -1,7 +1,9 @@
 import { DEFAULT_RUBRIC } from "../lib/constants";
 import { normalizePhone } from "../lib/phone";
 import { connectionOf, conversationsOf, directedKey, log, newId, nowMs, otherOf, scheduleRescoreAll } from "../lib/db";
+import { anonymousHint } from "../lib/privacy";
 import type { Tx } from "../schema";
+import { haveMet } from "./notify";
 import { applyPatch, blankUser, parsePatch, userByPhone } from "./users";
 
 /**
@@ -28,10 +30,14 @@ export function context(tx: Tx, phone: string) {
     break;
   }
 
+  // People they have not met yet are described only by their badge, stated look and one
+  // broad topic (lib/privacy.ts). The agent never even sees their name or company.
   const matches = [...tx.db.matches.viewer.filter(user.id)].sort((x, y) => y.score - x.score).slice(0, 3);
   const topMatches = matches.map((m) => {
     const o = tx.db.users.id.find(m.other);
-    return { name: o?.name, headline: o?.headline, score: m.score, reason: m.reason };
+    if (!o) return { met: false, score: m.score };
+    if (haveMet(tx, user.id, o.id)) return { met: true, name: o.name, headline: o.headline, score: m.score, reason: m.reason };
+    return { met: false, ...anonymousHint(o), score: m.score };
   });
 
   const { password, photoId, ...profile } = user;
