@@ -1,4 +1,5 @@
-import { nowMs, queueText } from "../lib/db";
+import { MIN_ENCOUNTER_MS } from "../lib/constants";
+import { dropsShortEncounters, nowMs, queueText } from "../lib/db";
 import type { Tx } from "../schema";
 
 /**
@@ -10,8 +11,6 @@ import type { Tx } from "../schema";
  */
 
 export const FOLLOW_UP_WAIT_MS = 120_000;
-/** Encounters shorter than this are dropped (no record, no text) unless the person turned that off. */
-export const SHORT_ENCOUNTER_MS = 60_000;
 export const NO_RECORDING = "No recording for this conversation.";
 
 export function hasSummary(summary: string | undefined) {
@@ -47,24 +46,6 @@ export function releaseFollowUps(tx: Tx, conversationId: string) {
   }
 }
 
-type Encounter = { activeMs?: number; hiddenFor?: string[] };
-type Prefs = { dropShortEncounters?: boolean };
-
-/**
- * The encounter bookkeeping (encounters, user_prefs) belongs to the nearby
- * and badge logic; read it when present so this file never decides on its own
- * that a short encounter counts.
- */
-function encounterOf(tx: Tx, conversationId: string): Encounter | undefined {
-  const table = (tx.db as unknown as Record<string, { conversationId?: { find(id: string): Encounter | undefined } }>).encounters;
-  return table?.conversationId?.find(conversationId) ?? undefined;
-}
-
-function prefsOf(tx: Tx, userId: string): Prefs | undefined {
-  const table = (tx.db as unknown as Record<string, { userId?: { find(id: string): Prefs | undefined } }>).userPrefs;
-  return table?.userId?.find(userId) ?? undefined;
-}
-
 export type FollowUpDecision = { hold: true } | { drop: string } | { body: string };
 
 /** Decide what to do with a queued follow up right now. */
@@ -76,11 +57,10 @@ export function followUpText(tx: Tx, phone: string, conversationId: string | und
   const otherId = c.a === me.id ? c.b : c.a;
   const them = tx.db.users.id.find(otherId);
 
-  const enc = encounterOf(tx, c.id);
-  if (enc?.hiddenFor?.includes(me.id)) return { drop: "short encounter (hidden)" };
-  const together = enc?.activeMs ?? (c.endedAt !== undefined ? c.endedAt - c.startedAt : undefined);
-  const dropShort = prefsOf(tx, me.id)?.dropShortEncounters !== false;
-  if (dropShort && together !== undefined && together < SHORT_ENCOUNTER_MS) return { drop: "short encounter" };
+  // "Drop short encounters" (conversations.ts): hidden for me means no text at all.
+  const enc = tx.db.encounters.conversationId.find(c.id);
+  if (enc?.hiddenFor.includes(me.id)) return { drop: "short encounter (dropped)" };
+  if (enc && enc.activeMs < MIN_ENCOUNTER_MS && dropsShortEncounters(tx, me.id)) return { drop: "short encounter" };
 
   if (c.endedAt === undefined) return { hold: true }; // they came back together: wait until it ends
   const ready = hasSummary(c.summary);
