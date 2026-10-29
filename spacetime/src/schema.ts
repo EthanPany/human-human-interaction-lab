@@ -256,6 +256,76 @@ const welcomeTexts = table(
   },
 );
 
+/**
+ * Every inbound iMessage, stored once by its Photon message id, so a repeated
+ * fetch or an overlapping tick can never answer the same text twice.
+ */
+const agentInbox = table(
+  { name: "agent_inbox" },
+  {
+    id: t.string().primaryKey(), // Photon message id
+    phone: t.string().index("btree"),
+    text: t.string().optional(),
+    createdAt: t.string(), // Photon ISO time
+    receivedAt: t.f64(),
+    spaceId: t.string(),
+    agentUserId: t.string(),
+    turnId: t.string().optional(), // set once the message belongs to a turn
+  },
+);
+
+/** One reply per inbound turn (a burst of texts), keyed by the burst's last message id. */
+const agentTurns = table(
+  { name: "agent_turns" },
+  {
+    id: t.string().primaryKey(),
+    phone: t.string().index("btree"),
+    claim: t.string(), // who is working on it right now
+    claimedUntil: t.f64(),
+    reply: t.string().optional(), // stored before sending, so a retry resends the same text
+    sentAt: t.f64().optional(),
+    attempts: t.u32(),
+    failed: t.string().optional(),
+    at: t.f64(),
+  },
+);
+
+/** Per person pacing for the agent's texts (keyed by normalized phone). */
+const agentPace = table(
+  { name: "agent_pace" },
+  {
+    phone: t.string().primaryKey(),
+    lastInAt: t.f64(),
+    lastOutAt: t.f64(),
+    lastUnsolicitedAt: t.f64(),
+    cardAt: t.f64().optional(),
+  },
+);
+
+/** What an outbox row is for (heads up, follow up, recap), and when it may go out. */
+const outboxMeta = table(
+  { name: "outbox_meta" },
+  {
+    outboxId: t.string().primaryKey(),
+    kind: t.string(),
+    conversationId: t.string().optional(),
+    holdUntil: t.f64().optional(),
+    expiresAt: t.f64().optional(),
+  },
+);
+
+/** Approximate phone location (about 100 m grid), only while the app is open. Expires after 15 minutes. */
+const coarseLocations = table(
+  { name: "coarse_locations" },
+  {
+    userId: t.string().primaryKey(),
+    lat: t.f64(),
+    lng: t.f64(),
+    accuracy: t.f64(),
+    at: t.f64(),
+  },
+);
+
 // Schedule tables (Convex crons and ctx.scheduler.runAfter) ----------------
 
 /** Every minute: heads up texts and closing stale conversations. */
@@ -321,6 +391,11 @@ const spacetimedb = schema(
     agentCursor,
     agentLines,
     welcomeTexts,
+    agentInbox,
+    agentTurns,
+    agentPace,
+    outboxMeta,
+    coarseLocations,
     minuteJob,
     agentJob,
     summarizeJob,

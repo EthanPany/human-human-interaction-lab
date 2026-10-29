@@ -58,11 +58,23 @@ export function log(tx: Tx, owner: string, other: string | undefined, kind: stri
   tx.db.activity.insert({ id: newId(tx), owner, other, kind, text, at: nowMs(tx) });
 }
 
+/** What an outbox text is for; the cloud agent paces and holds them by kind (api/cloudAgent.ts). */
+export type TextMeta = { kind: string; conversationId?: string; holdUntil?: number; expiresAt?: number };
+
 /** Queue a text for the agent to send. Demo profiles are skipped. Returns the outbox id. */
-export function queueText(tx: Tx, phone: string, body: string, kind?: "welcome") {
+export function queueText(tx: Tx, phone: string, body: string, kind?: "welcome", meta?: TextMeta) {
   if (isDemoPhone(phone)) return undefined;
   const id = newId(tx);
   if (kind === "welcome") tx.db.welcomeTexts.insert({ outboxId: id, phone });
+  if (meta) {
+    tx.db.outboxMeta.insert({
+      outboxId: id,
+      kind: meta.kind,
+      conversationId: meta.conversationId,
+      holdUntil: meta.holdUntil,
+      expiresAt: meta.expiresAt,
+    });
+  }
   tx.db.outbox.insert({
     id,
     phone,
