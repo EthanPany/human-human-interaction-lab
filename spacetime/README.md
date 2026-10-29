@@ -10,7 +10,8 @@ spacetime/
 ├── src/schema.ts       tables (private) and env declarations
 ├── src/http.ts         the HTTP API the app calls (rpc, upload, photo)
 ├── src/api/            ports of backend/convex/*.ts (same names, same JSON)
-├── src/lib/            constants, scoring, avatar, phone: copied from backend/convex/lib (npm run sync-lib)
+├── src/lib/            constants.ts: distance rules and tuning knobs (SpacetimeDB only now, keep in step with the app's BadgeStore)
+│                       scoring, avatar, phone: copied from backend/convex/lib (npm run sync-lib)
 │                       claude, jev, photonApi, agentCore, agentPhoto: synchronous ports for procedures
 └── scripts/e2e.mjs     two fake phones against a database (port of backend/scripts/e2e.ts)
 ```
@@ -78,6 +79,17 @@ SPACETIME_HOST=http://127.0.0.1:3000 npm run e2e
 ```
 
 In the app, set the host to `http://<your Mac's IP>:3000` (plain http works only for local network addresses).
+
+## Encounters and distance rules
+
+The numbers live in `src/lib/constants.ts` and in the app's `BadgeStore` (keep both in step).
+
+- A badge reacts from the maximum ranging range, about 9 m (50 m when both phones range with extended UWB; the phone says so in `nearby:reportDistance` as `extended`). Each person can lower it with "Respond from" (Settings > Nearby, `respondFromM` in `users:updateProfile`, stored in `user_prefs`). A pair uses the smaller of the two, so both badges react at the same distance. Closeness (tint, glow, approach cues) ramps from that range down to 1 m.
+- Together at 1.0 m or closer; once together, apart only past 1.5 m. Together for a second starts an encounter (a `conversations` row plus its `encounters` row), for any two badge wearers, match or not. `badge:state` says `matched`; only matches get tint, glow and approach cues.
+- Back together within 5 minutes after parting continues the same encounter (same record, the transcript appends). Later, it is a new encounter, and `people:detail` lists each one in `encounters` with its own summary and follow up.
+- "Drop short encounters" (`dropShortEncounters`, on by default): when an encounter ends under 1 minute, it is hidden from whoever has it on (no record, summary or text for them). Hidden for both, it is deleted once it can no longer be rejoined.
+- California mode: if either person has it on, recording waits until both said yes (`conversations:consent`; `badge:state` returns `consentRequired`, `myConsent`, `peerConsent`, `recordingAllowed`).
+- `nearby:peers` is ordered by priority (the person I'm with, then matches, then others by recency) and says `isMatch`; the phone ranges with the first few (UWB sessions are limited).
 
 ## Differences from Convex
 

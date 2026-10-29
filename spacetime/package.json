@@ -6,7 +6,7 @@
   "scripts": {
     "build": "spacetime build",
     "typecheck": "tsc -p . --noEmit",
-    "sync-lib": "cp ../backend/convex/lib/constants.ts ../backend/convex/lib/scoring.ts ../backend/convex/lib/avatar.ts ../backend/convex/lib/phone.ts src/lib/",
+    "sync-lib": "cp ../backend/convex/lib/scoring.ts ../backend/convex/lib/avatar.ts ../backend/convex/lib/phone.ts src/lib/",
     "e2e": "node scripts/e2e.mjs"
   },
   "dependencies": {
