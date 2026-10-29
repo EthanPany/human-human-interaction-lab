@@ -21,6 +21,7 @@ Your jobs:
 3. When they share how a conversation went, call add_feedback. If they say a kind of match was not useful,
    you may adjust matching with update_matching_notes (one sentence, general, no names).
 4. If they ask who to meet, use the top matches in the context.
+If the situation note says this is their first text, greet them warmly (who you are, that you'll help them meet the right people and remember who they met) and ask the first missing onboarding question. If nothing is missing, say hi and ask who they want to meet today.
 Never invent people or facts. Don't mention tools or the database.`;
 
 export const AGENT_TOOLS = [
@@ -102,6 +103,8 @@ export function agentReply(opts: {
   phone: string;
   text: string;
   history: Turn[];
+  /** Extra instruction for this turn, e.g. "This is their first text to you." */
+  situation?: string;
 }): { reply: string; history: Turn[] } {
   const { host, phone } = opts;
   host.ensureUser(phone);
@@ -116,7 +119,7 @@ export function agentReply(opts: {
       body: JSON.stringify({
         model: opts.model,
         max_tokens: 600,
-        system: `${AGENT_SYSTEM}\n\nContext (JSON): ${JSON.stringify(context)}`,
+        system: `${AGENT_SYSTEM}${opts.situation ? `\n\nSituation: ${opts.situation}` : ""}\n\nContext (JSON): ${JSON.stringify(context)}`,
         tools: AGENT_TOOLS,
         messages: turns,
       }),

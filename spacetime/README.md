@@ -1,6 +1,8 @@
 # SpacetimeDB backend
 
-The same backend as `backend/convex`, running as a SpacetimeDB TypeScript module, so the demo can switch providers in the iOS app (Settings > Backend provider). Convex stays the default.
+**This is the live backend.** The iOS app uses only this module (database `hhil` on Maincloud), and the iMessage text agent runs here. Convex (`backend/convex`) is turned off: its crons are removed and its `PHOTON_*` env is unset, so it never answers texts. Its data is kept but not used.
+
+It is a port of `backend/convex` as a SpacetimeDB TypeScript module, with the same function names and JSON shapes.
 
 ```
 spacetime/
@@ -9,7 +11,7 @@ spacetime/
 ├── src/http.ts         the HTTP API the app calls (rpc, upload, photo)
 ├── src/api/            ports of backend/convex/*.ts (same names, same JSON)
 ├── src/lib/            constants, scoring, avatar, phone: copied from backend/convex/lib (npm run sync-lib)
-│                       claude, photonApi, agentCore: synchronous ports for procedures
+│                       claude, jev, photonApi, agentCore, agentPhoto: synchronous ports for procedures
 └── scripts/e2e.mjs     two fake phones against a database (port of backend/scripts/e2e.ts)
 ```
 
@@ -39,7 +41,7 @@ spacetime call hhil seed_demo --server maincloud   # demo attendees + first matc
 
 Pick another database name if `hhil` is taken; the app needs it. Check with `SPACETIME_DB=hhil npm run e2e` (two fake phones, takes about a minute).
 
-Updating later: `spacetime publish hhil --server maincloud` keeps data and stored env values. If a publish adds a recurring job, run `spacetime call hhil ensure_jobs --server maincloud`.
+Updating later: `spacetime publish hhil --server maincloud` keeps data and stored env values. To publish with every key from `backend/.env.local` without printing them: `set -a; source ../backend/.env.local; set +a; spacetime publish hhil --server maincloud`. If a publish adds a recurring job, run `spacetime call hhil ensure_jobs --server maincloud`.
 
 ### Environment (all optional)
 
@@ -47,9 +49,11 @@ Set in the shell when publishing (as above), or later without uploading: `ANTHRO
 
 | Key | What |
 | --- | --- |
-| `ANTHROPIC_API_KEY` | Claude matching, summaries and the text agent. Without it: keyword matching, transcript snippets as summaries. |
+| `ANTHROPIC_API_KEY` | Claude matching (tags and reasons), summaries and the text agent. Without it: keyword matching, transcript snippets as summaries. |
 | `CLAUDE_MODEL` | Defaults to `claude-sonnet-5-5`. |
-| `PHOTON_API_KEY`, `PHOTON_PROJECT_ID` | Turns on the iMessage agent (every 5 s). Only one backend may run the agent per Photon line: unset these in Convex first, or texts are answered twice. |
+| `TYPESAFE_API_KEY` | TypeSafe Jev pair scoring (`src/lib/jev.ts`): Jev scores are saved first, then Claude adds tags and reasons. Without it Claude scores alone. |
+| `JEV_MODEL` | Defaults to `jev-latest`. |
+| `PHOTON_API_KEY`, `PHOTON_PROJECT_ID` | Turns on the iMessage agent (every 5 s), Photon line assignment on every sign in, and the agent's contact card on first contact. Only one backend may run the agent per Photon line (Convex has these unset). |
 | `PUBLIC_BASE_URL` | Host for photo links, if the one derived from requests is wrong (e.g. `https://maincloud.spacetimedb.com`). |
 
 ## Admin
@@ -59,6 +63,9 @@ spacetime call hhil seed_demo --server maincloud
 spacetime call hhil rescore --server maincloud
 spacetime call hhil end_event --server maincloud     # recaps and "you passed by" intros
 spacetime logs hhil --server maincloud
+spacetime call hhil photon_backfill --server maincloud            # check everyone's Photon line
+spacetime call hhil photon_set_line '"+1585..."' '"+1415..."' --server maincloud   # dedicated line for one person
+spacetime call hhil send_card '"+1585..."' --server maincloud     # resend the agent's contact card
 spacetime sql hhil "SELECT name, phone FROM users" --server maincloud
 ```
 
@@ -74,7 +81,10 @@ In the app, set the host to `http://<your Mac's IP>:3000` (plain http works only
 
 ## Differences from Convex
 
-- Same: sign in, profile, avatar defaults, photos and moments, Nearby tokens, distances, badge state, conversations (open, finish, stale cleanup, summaries), People list/detail/current, heads up texts, end of event, Claude matching with the keyword fallback, the Photon text agent.
+- Same: sign in, profile, avatar defaults, photos and moments, Nearby tokens, distances, badge state, conversations (open, finish, stale cleanup, summaries), People list/detail/current, heads up texts, end of event, Jev scoring with Claude tags and reasons and the keyword fallback, the Photon text agent (first text greeting, contact card, held texts until they first write in), Photon 2.0 per user line assignment on every sign in (`users:me` returns `agentLine` and `agentConnected`).
+- Each person's Photon line lives in the `agent_lines` table (Convex: `users.agentLine`), and the sign up welcome is marked in `welcome_texts` (Convex: `outbox.kind`).
+- Jev rates candidates one after another (fetch is synchronous in procedures), not eight at a time.
+- No per match badge keywords yet (Convex `matches.keywords`).
 - Photos are stored inline in a `photos` table (bytes) and served by the module, so no separate file storage is needed.
 - No Voyage embedding prefilter (no vector index). With more than 24 profiled people, the most recently active 24 are scored per viewer.
 - Updates reach the app by polling (about 1 s), not pushed live queries.

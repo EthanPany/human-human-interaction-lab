@@ -1,7 +1,8 @@
 import type { Tx, User } from "../schema";
 import { normalizePhone } from "../lib/phone";
 import { avatarOf, defaultAvatar } from "../lib/avatar";
-import { newId, nowMs, queueText, requestRescore, UserError } from "../lib/db";
+import { newId, nowMs, queueText, requestRescore, scheduleLineCheck, UserError } from "../lib/db";
+import { normalizeHandle } from "../lib/photonApi";
 import { ArgError, optStr, str, type Ctx } from "./context";
 
 /** Port of backend/convex/users.ts. */
@@ -92,6 +93,11 @@ function ownProfile(ctx: Ctx, u: User) {
     badgeLayout: u.badgeLayout ?? "avatar",
     photoUrl: ctx.photoUrl(photoId),
     hasPassword: Boolean(password),
+    // The Photon iMessage line this person texts (assigned on sign in, api/photonAssign.ts)
+    agentLine: ctx.tx.db.agentLines.phone.find(u.phone)?.line,
+    // False until they text their agent line once. The app then says
+    // "Text your agent to start" (a shared iMessage line can't text first).
+    agentConnected: Boolean(ctx.tx.db.photonConversations.phone.find(normalizeHandle(u.phone))),
   };
 }
 
@@ -104,6 +110,8 @@ export function signIn({ tx }: Ctx, args: Record<string, unknown>) {
   if (existing) {
     if (existing.password && existing.password !== password) throw new UserError("Wrong password");
     if (name && !existing.name) tx.db.users.id.update({ ...existing, name });
+    // Every sign in checks their Photon line (adds them if missing, fixes a stale one)
+    scheduleLineCheck(tx, existing.id);
     return existing.id;
   }
   const id = newId(tx);
@@ -115,12 +123,17 @@ export function signIn({ tx }: Ctx, args: Record<string, unknown>) {
     badgeLayout: "avatar",
     ...defaultAvatar(phone),
   });
+  // Put them on the iMessage line right away so texting the agent just works
+  scheduleLineCheck(tx, id);
+  // Sent as soon as they first text the line (a shared line can't text first).
+  // If their first text gets a direct answer, the agent greets them there instead.
   queueText(
     tx,
     phone,
     name
-      ? `Hi ${name}! I'm your badge agent. I'll help you meet the right people here. Who are you hoping to meet today?`
-      : "Hi! I'm your badge agent. I'll help you meet the right people here. What should I call you, and who are you hoping to meet?",
+      ? `Hi ${name}, I'm your badge agent. I'll help you meet the right people at the event and remember who you met. Quick question to get you set up: what do you do?`
+      : "Hi, I'm your badge agent. I'll help you meet the right people at the event and remember who you met. What should I call you?",
+    "welcome",
   );
   return id;
 }

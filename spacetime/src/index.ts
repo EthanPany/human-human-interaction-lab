@@ -1,11 +1,12 @@
 import { ScheduleAt } from "spacetimedb";
 import { t } from "spacetimedb/server";
-import spacetimedb, { agentJob, minuteJob, rescoreAllJob, rescoreJob, summarizeJob, type Tx } from "./schema";
+import spacetimedb, { agentJob, minuteJob, photonAssignJob, rescoreAllJob, rescoreJob, summarizeJob, type Tx } from "./schema";
 import { closeStale } from "./api/conversations";
 import { endEvent, headsUps } from "./api/notify";
 import { profileChanged, rescoreAll as rescoreEveryone } from "./api/matching";
 import { summarizeConversation } from "./api/summarize";
-import { tick } from "./api/cloudAgent";
+import { sendCard, tick } from "./api/cloudAgent";
+import { backfill, ensure, setLine } from "./api/photonAssign";
 import { seedDemo, seedTestPair } from "./api/seed";
 import { scheduleRescoreAll } from "./lib/db";
 
@@ -64,6 +65,12 @@ export const rescoreAll = spacetimedb.procedure({ onSchedule: rescoreAllJob }, {
   return {};
 });
 
+/** Check one person's Photon line (photonAssign:ensure), scheduled by sign in and the backfill. */
+export const photonEnsure = spacetimedb.procedure({ onSchedule: photonAssignJob }, { arg: photonAssignJob.rowType }, t.unit(), (ctx, { arg }) => {
+  ensure(ctx, arg.userId);
+  return {};
+});
+
 // Admin (demo only, like the public Convex mutations) -------------------------
 
 /** spacetime call <db> seed_demo */
@@ -77,3 +84,16 @@ export const rescore = spacetimedb.reducer((ctx) => scheduleRescoreAll(ctx));
 
 /** spacetime call <db> end_event */
 export const endEventReducer = spacetimedb.reducer({ name: "end_event" }, (ctx) => endEvent(ctx));
+
+/** spacetime call <db> photon_backfill  (check everyone's Photon line, one every 0.5 s) */
+export const photonBackfill = spacetimedb.reducer({ name: "photon_backfill" }, (ctx) => {
+  backfill(ctx);
+});
+
+/** spacetime call <db> photon_set_line '"+15852106589"' '"+14156052974"'  (a dedicated line for one person) */
+export const photonSetLine = spacetimedb.reducer({ name: "photon_set_line" }, { phone: t.string(), line: t.string() }, (ctx, { phone, line }) => {
+  console.log(setLine(ctx, phone, line));
+});
+
+/** spacetime call <db> send_card '"+1..."'  (resend the agent's contact card into their thread) */
+export const sendCardProcedure = spacetimedb.procedure({ name: "send_card" }, { phone: t.string() }, t.string(), (ctx, { phone }) => sendCard(ctx, phone));

@@ -234,6 +234,28 @@ const agentCursor = table(
   },
 );
 
+/**
+ * Each person's Photon iMessage line (Convex users.agentLine), keyed by their
+ * phone. Assigned on sign in by api/photonAssign.ts.
+ */
+const agentLines = table(
+  { name: "agent_lines" },
+  {
+    phone: t.string().primaryKey(),
+    line: t.string(),
+    updatedAt: t.f64(),
+  },
+);
+
+/** Outbox rows that are the sign up welcome (Convex outbox.kind === "welcome"). */
+const welcomeTexts = table(
+  { name: "welcome_texts" },
+  {
+    outboxId: t.string().primaryKey(),
+    phone: t.string().index("btree"),
+  },
+);
+
 // Schedule tables (Convex crons and ctx.scheduler.runAfter) ----------------
 
 /** Every minute: heads up texts and closing stale conversations. */
@@ -271,6 +293,12 @@ export const rescoreAllJob = table(
   { scheduledId: t.u64().primaryKey().autoInc(), scheduledAt: t.scheduleAt() },
 );
 
+/** One shot: check a person's Photon line (photonAssign:ensure), on every sign in and in the backfill. */
+export const photonAssignJob = table(
+  { name: "photon_assign_job" },
+  { scheduledId: t.u64().primaryKey().autoInc(), scheduledAt: t.scheduleAt(), userId: t.string() },
+);
+
 const spacetimedb = schema(
   {
     users,
@@ -291,11 +319,14 @@ const spacetimedb = schema(
     photonConversations,
     agentHistory,
     agentCursor,
+    agentLines,
+    welcomeTexts,
     minuteJob,
     agentJob,
     summarizeJob,
     rescoreJob,
     rescoreAllJob,
+    photonAssignJob,
   },
   {
     // Secrets and settings, set with `spacetime publish` (see README).
@@ -304,6 +335,10 @@ const spacetimedb = schema(
       CLAUDE_MODEL: t.string().optional(),
       PHOTON_API_KEY: t.string().optional(),
       PHOTON_PROJECT_ID: t.string().optional(),
+      /** TypeSafe Jev pair scoring (lib/jev.ts). Without it Claude scores alone. */
+      TYPESAFE_API_KEY: t.string().optional(),
+      /** Defaults to jev-latest. */
+      JEV_MODEL: t.string().optional(),
       /** e.g. https://maincloud.spacetimedb.com; photo links are built from it. */
       PUBLIC_BASE_URL: t.string().optional(),
     },

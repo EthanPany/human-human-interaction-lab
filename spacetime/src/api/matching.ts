@@ -4,10 +4,14 @@ import { askClaudeJSON, objectSchema } from "../lib/claude";
 import { MAX_SCORED_CANDIDATES } from "../lib/constants";
 import { directedKey, loadRubric, nowMs } from "../lib/db";
 import { combine, keywordScore, pickTag, type Profile } from "../lib/scoring";
+import { jevAvailable, jevFits, type JevFit } from "../lib/jev";
 
 /**
- * Port of backend/convex/matching.ts. Runs in procedures because it calls Claude:
- *   read profiles (transaction) -> one Claude call per viewer -> save rows (transaction).
+ * Port of backend/convex/matching.ts. Runs in procedures because it calls Jev and Claude:
+ *   read profiles (transaction)
+ *   -> TypeSafe Jev rates every pair (if TYPESAFE_API_KEY is set) and those scores are saved at once
+ *   -> one Claude call per viewer writes the tags and reasons (and scores any pair Jev missed)
+ *   -> save rows (transaction). Keyword scoring is the last fallback.
  * Differences from Convex: no Voyage embedding prefilter (no vector index here),
  * so with more than MAX_SCORED_CANDIDATES people the most recently active ones are scored.
  */
@@ -89,15 +93,39 @@ export function scoreViewer(ctx: Pctx, viewerId: string) {
   }
 
   const me = toProfile(viewer);
+  let jev = new Map<string, JevFit>();
   const fallback = (c: User): MatchRow[] => {
     const them = toProfile(c);
-    const forward = keywordScore(me, them, rubric);
+    const f = jev.get(c.id);
+    const forward = f
+      ? { ...keywordScore(me, them, rubric), score: combine(f.needFitMe, f.needFitThem, f.values, rubric) }
+      : keywordScore(me, them, rubric);
     return [
       { viewer: viewerId, other: c.id, ...forward },
       { viewer: c.id, other: viewerId, score: forward.score, tag: pickTag(them, me) },
     ];
   };
 
+  // 1. Jev (if configured) rates every pair in about half a second each and the
+  //    scores go live right away, with keyword tags until Claude's arrive.
+  if (jevAvailable(ctx.env)) {
+    jev = jevFits(ctx.http, ctx.env, me, candidates.map(toProfile));
+    if (jev.size > 0) {
+      const quick = candidates.flatMap((c): MatchRow[] => {
+        const f = jev.get(c.id);
+        if (!f) return [];
+        const score = combine(f.needFitMe, f.needFitThem, f.values, rubric);
+        const them = toProfile(c);
+        return [
+          { viewer: viewerId, other: c.id, score, tag: pickTag(me, them) },
+          { viewer: c.id, other: viewerId, score, tag: pickTag(them, me) },
+        ];
+      });
+      ctx.withTx((tx) => saveScores(tx, quick));
+    }
+  }
+
+  // 2. Claude writes the tags and reasons (and scores any pair Jev missed).
   let result: ClaudeRow[] | null = null;
   if (ctx.env.ANTHROPIC_API_KEY) {
     try {
@@ -131,7 +159,10 @@ Return one rating per candidate, using the candidate's id.`,
     rows = candidates.flatMap((c): MatchRow[] => {
       const r = byId.get(c.id);
       if (!r) return fallback(c);
-      const score = combine(Number(r.needFitMe), Number(r.needFitThem), Number(r.values), rubric);
+      const f = jev.get(c.id);
+      const score = f
+        ? combine(f.needFitMe, f.needFitThem, f.values, rubric)
+        : combine(Number(r.needFitMe), Number(r.needFitThem), Number(r.values), rubric);
       return [
         { viewer: viewerId, other: c.id, score, tag: validTag(c.tags, r.tagForViewer), reason: r.reasonForViewer },
         { viewer: c.id, other: viewerId, score, tag: validTag(viewer.tags, r.tagForCandidate), reason: r.reasonForCandidate },

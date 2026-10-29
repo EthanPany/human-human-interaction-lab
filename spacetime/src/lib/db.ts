@@ -58,11 +58,13 @@ export function log(tx: Tx, owner: string, other: string | undefined, kind: stri
   tx.db.activity.insert({ id: newId(tx), owner, other, kind, text, at: nowMs(tx) });
 }
 
-/** Queue a text for the agent to send. Demo profiles are skipped. */
-export function queueText(tx: Tx, phone: string, body: string) {
-  if (isDemoPhone(phone)) return;
+/** Queue a text for the agent to send. Demo profiles are skipped. Returns the outbox id. */
+export function queueText(tx: Tx, phone: string, body: string, kind?: "welcome") {
+  if (isDemoPhone(phone)) return undefined;
+  const id = newId(tx);
+  if (kind === "welcome") tx.db.welcomeTexts.insert({ outboxId: id, phone });
   tx.db.outbox.insert({
-    id: newId(tx),
+    id,
     phone,
     body,
     at: nowMs(tx),
@@ -71,6 +73,25 @@ export function queueText(tx: Tx, phone: string, body: string) {
     attempts: 0,
     failed: undefined,
   });
+  return id;
+}
+
+/** The sign up welcome still waiting to go out for this phone, if any. */
+export function pendingWelcome(tx: Tx, phone: string) {
+  for (const w of tx.db.welcomeTexts.phone.filter(phone)) {
+    const row = tx.db.outbox.id.find(w.outboxId);
+    if (row && !row.sent) return row;
+  }
+  return null;
+}
+
+export function isWelcome(tx: Tx, outboxId: string) {
+  return Boolean(tx.db.welcomeTexts.outboxId.find(outboxId));
+}
+
+/** Check this person's Photon line soon (api/photonAssign.ts ensure). */
+export function scheduleLineCheck(tx: Tx, userId: string, delayMs = 0) {
+  tx.db.photonAssignJob.insert({ scheduledId: 0n, scheduledAt: after(tx, delayMs), userId });
 }
 
 /** Mark a profile as edited and re-score it once the burst of edits settles. */

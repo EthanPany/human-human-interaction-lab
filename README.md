@@ -9,7 +9,8 @@ Cal Hacks 13.0 project. Your phone becomes a live name badge worn on a lanyard, 
 | Folder | What lives there |
 |---|---|
 | `ios/` | SwiftUI app (git submodule, separate repo managed by Xcode) |
-| `backend/` | Convex backend and the text message agent worker |
+| `spacetime/` | SpacetimeDB backend (live): the database, HTTP API and cloud text agent the app uses |
+| `backend/` | Convex backend (turned off, kept for reference and its data) and the local agent worker |
 | `poster/` | Poster source files and exports |
 | `video/` | Demo video footage, edits and exports |
 
@@ -19,7 +20,11 @@ Clone with submodules:
 git clone --recurse-submodules https://github.com/EthanPany/human-human-interaction-lab.git
 ```
 
-## How we use Convex
+## Live backend: SpacetimeDB
+
+**SpacetimeDB is the live backend; Convex is off.** The app talks only to the SpacetimeDB module `hhil` on Maincloud (`spacetime/`, see [spacetime/README.md](spacetime/README.md)), and the iMessage text agent, Photon line assignment, Jev plus Claude matching and every recurring job run there. The Convex deployment (`small-porpoise-293`) was switched off in October 2026 because it was near its free plan limit: its crons are removed and its Photon keys are unset, so it never answers texts. Its data is kept. Accounts do not move between the two backends.
+
+## How we used Convex (before the switch)
 
 Convex is the live heart of the badge. Everything the phone shows is a subscription, so when two people walk toward each other the badge changes within a moment, with no polling code in the app.
 
@@ -29,4 +34,4 @@ Convex is the live heart of the badge. Everything the phone shows is a subscript
 - **Crons** (`backend/convex/crons.ts`): heads up texts about strong matches who are at the event (every minute), closing conversations whose phones went quiet (every minute), and the cloud text agent tick (every 5 seconds) that reads new iMessages, answers them with Claude and sends queued texts.
 - **Actions and the scheduler.** Match scoring calls Claude and embeddings from actions; sign up schedules the agent line assignment with `ctx.scheduler.runAfter`.
 
-The same app also runs on SpacetimeDB (`spacetime/`), switchable in Settings, with the same function names.
+The SpacetimeDB port keeps the same function names and JSON shapes, so the app's models decode both; live queries became about one second of polling.
