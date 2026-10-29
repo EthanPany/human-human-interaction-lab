@@ -11,6 +11,7 @@ spacetime/
 ├── src/http.ts         the HTTP API the app calls (rpc, upload, photo)
 ├── src/api/            ports of backend/convex/*.ts (same names, same JSON)
 ├── src/lib/            constants.ts: distance rules and tuning knobs (SpacetimeDB only now, keep in step with the app's BadgeStore)
+│                       (UWB merge and Bluetooth thresholds are here too)
 │                       scoring, avatar, phone: copied from backend/convex/lib (npm run sync-lib)
 │                       claude, jev, photonApi, agentCore, agentPhoto: synchronous ports for procedures
 └── scripts/e2e.mjs     two fake phones against a database (port of backend/scripts/e2e.ts)
@@ -89,7 +90,9 @@ The numbers live in `src/lib/constants.ts` and in the app's `BadgeStore` (keep b
 - Back together within 5 minutes after parting continues the same encounter (same record, the transcript appends). Later, it is a new encounter, and `people:detail` lists each one in `encounters` with its own summary and follow up.
 - "Drop short encounters" (`dropShortEncounters`, on by default): when an encounter ends under 1 minute, it is hidden from whoever has it on (no record, summary or text for them). Hidden for both, it is deleted once it can no longer be rejoined.
 - California mode: if either person has it on, recording waits until both said yes (`conversations:consent`; `badge:state` returns `consentRequired`, `myConsent`, `peerConsent`, `recordingAllowed`).
-- `nearby:peers` is ordered by priority (the person I'm with, then matches, then others by recency) and says `isMatch`; the phone ranges with the first few (UWB sessions are limited).
+- Both phones report their own UWB reading (`nearby:reportDistance`, stored per direction in `pair_readings`), and the pair's distance is merged: the smaller of two readings less than 1 s old, else the freshest (up to 2.5 s). One phone seeing the other is enough for both badges; `badge:state` returns the merged `meters`, `distanceAgeMs` and `distanceSource`.
+- Bluetooth assist: each worn badge advertises a short id from `nearby:bleId` (6 characters, rotates every 15 minutes, never the user id) and reports what it hears with `nearby:reportBle {userId, sightings: [{bleId, rssi}]}`. Bluetooth is coarse: it marks a peer "in the area" (`inArea` in `nearby:peers`), gives a distance estimate no closer than 2 m, and holds "together" while UWB is briefly blind (strong signal). It says "together" on its own only after 4 s with no UWB from either phone and a very strong signal (about -50 dBm); then `badge:state` says `estimated: true`.
+- `nearby:peers` is ordered by priority (the person I'm with, then matches in the area, others in the area by closeness, peers Bluetooth knows nothing about, and last those Bluetooth says are away; recency in 10 s steps) and says `isMatch`, `priority`, `inArea`, `bleId`, the merged `meters` and `source`, and for matches the pair `color` and their `avatarColor`; the phone ranges with the first few (UWB sessions are limited).
 
 ## Text agent: one reply per text, paced, private
 

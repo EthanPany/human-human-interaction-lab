@@ -157,7 +157,9 @@ async function main() {
   const agreed = await call("badge:state", { userId: b });
   check("both agreed: recording allowed", agreed.recordingAllowed === true && agreed.peerConsent === true);
 
+  // Parting: both phones see it (the pair's distance is the smaller of two recent readings)
   await call("nearby:reportDistance", { userId: a, peerId: b, meters: 4 });
+  await call("nearby:reportDistance", { userId: b, peerId: a, meters: 4 });
   await call("conversations:finish", { conversationId: talking.conversationId, transcript: "Alice: hi Bob. Bob: hi." });
   const dropped = await call("people:detail", { userId: a, otherId: b });
   check("short encounter is dropped", (dropped?.encounters ?? []).length === 0, dropped?.encounters);
@@ -175,6 +177,7 @@ async function main() {
   check("consent carries over in the same encounter", again.recordingAllowed === true);
 
   await call("nearby:reportDistance", { userId: a, peerId: b, meters: 4 });
+  await call("nearby:reportDistance", { userId: b, peerId: a, meters: 4 });
   await call("conversations:finish", {
     conversationId: again.conversationId,
     transcript:
@@ -206,6 +209,7 @@ async function main() {
     const second = await call("badge:state", { userId: a });
     check("after 5 min apart: a new encounter", second.mode === "talking" && second.conversationId !== again.conversationId);
     await call("nearby:reportDistance", { userId: a, peerId: b, meters: 4 });
+    await call("nearby:reportDistance", { userId: b, peerId: a, meters: 4 });
     await call("conversations:finish", { conversationId: second.conversationId, transcript: "Alice: hi again. Bob: Tuesday still works." });
     await sleep(12_000);
     const both = await call("people:detail", { userId: a, otherId: b });
@@ -220,8 +224,57 @@ async function main() {
     topMatches: ctx.topMatches.map((m) => `${m.name} ${m.score?.toFixed(2)}`),
   });
 
+  // Merged distance: one phone seeing the other is enough for both badges
+  await call("nearby:reportDistance", { userId: b, peerId: a, meters: 3 });
+  const oneSided = await call("badge:state", { userId: a });
+  check("one side's UWB reading reaches both badges", (oneSided.mode === "match" || oneSided.mode === "connected") && Math.abs((oneSided.meters ?? 0) - 3) < 0.01 && oneSided.distanceSource === "uwb", {
+    mode: oneSided.mode,
+    meters: oneSided.meters,
+    source: oneSided.distanceSource,
+  });
+  const before = Date.now();
+  await call("nearby:reportDistance", { userId: a, peerId: b, meters: 4.5 });
+  const minOfTwo = await call("badge:state", { userId: b });
+  if (Date.now() - before < 900) {
+    check("two recent readings: the smaller counts", Math.abs((minOfTwo.meters ?? 0) - 3) < 0.01, minOfTwo.meters);
+  } else {
+    console.log("  (skipped the min of two check: the calls took longer than the 1 s merge window)");
+  }
+
+  // Bluetooth assist: rotating short ids, "in the area", estimated together only when very strong
+  const bleA = await call("nearby:bleId", { userId: a });
+  const bleB = await call("nearby:bleId", { userId: b });
+  check("rotating Bluetooth ids (short, not the user id)", bleA?.bleId?.length === 6 && bleA.bleId !== bleB?.bleId && bleA.expiresAt > Date.now(), [bleA, bleB]);
+  const bleAgain = await call("nearby:bleId", { userId: a });
+  check("same Bluetooth id until it rotates", bleAgain?.bleId === bleA?.bleId);
+  await call("nearby:reportBle", { userId: a, sightings: [{ bleId: bleB.bleId, rssi: -70 }] });
+  const blePeers = await call("nearby:peers", { userId: a });
+  const pb = blePeers.find((p) => p.userId === b);
+  check("peers say in the area, with their Bluetooth id, color and merged distance", pb?.inArea === true && pb?.bleId === bleB.bleId && Boolean(pb?.color) && typeof pb?.meters === "number", pb);
+  console.log("…waiting for UWB to go quiet");
+  await sleep(4_500);
+  await call("nearby:reportBle", { userId: a, sightings: [{ bleId: bleB.bleId, rssi: -72 }] });
+  const weak = await call("badge:state", { userId: a });
+  check("a Bluetooth estimate is coarse: never together, never closer than 2 m", weak.distanceSource === "ble" && weak.mode !== "talking" && weak.meters >= 2, {
+    mode: weak.mode,
+    meters: weak.meters,
+    source: weak.distanceSource,
+  });
+  await call("nearby:reportBle", { userId: a, sightings: [{ bleId: bleB.bleId, rssi: -45 }] });
+  await sleep(1_200);
+  await call("nearby:reportBle", { userId: b, sightings: [{ bleId: bleA.bleId, rssi: -46 }] });
+  const estimated = await call("badge:state", { userId: a });
+  check("no UWB for 4 s and a very strong signal: together, marked estimated", estimated.mode === "talking" && estimated.estimated === true && estimated.distanceSource === "ble", {
+    mode: estimated.mode,
+    estimated: estimated.estimated,
+    meters: estimated.meters,
+  });
+  if (estimated.conversationId) await call("conversations:finish", { conversationId: estimated.conversationId });
+
   await call("nearby:setRanging", { userId: a, on: false });
   await call("nearby:setRanging", { userId: b, on: false });
+  const cleared = await call("nearby:peers", { userId: a });
+  check("badge off: no peers, Bluetooth ids gone", cleared.length === 0 && (await call("nearby:reportBle", { userId: b, sightings: [{ bleId: bleA.bleId, rssi: -45 }] })) === null);
 
   const gone = await call("users:me", { userId: "not-a-user" });
   check("unknown user is null (app signs out)", gone === null);
