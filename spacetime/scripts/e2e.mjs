@@ -199,6 +199,94 @@ async function main() {
   const bobDetail = await call("people:detail", { userId: b, otherId: a });
   check("Bob drops it (under a minute, his setting is on)", (bobDetail?.encounters ?? []).length === 0, bobDetail?.encounters?.length);
 
+  // Profile photo (square, People rows and pages), separate from the badge photo
+  await call("users:setProfilePhoto", { userId: a, storageId: await upload() });
+  const withProfilePhoto = await call("users:me", { userId: a });
+  const bobList = await call("people:list", { userId: b });
+  const aliceRow = bobList.find((p) => p.id === a);
+  check("profile photo on me and in People rows", Boolean(withProfilePhoto?.profilePhotoUrl) && aliceRow?.profilePhotoUrl === withProfilePhoto.profilePhotoUrl && withProfilePhoto.badgeLayout === "photoText", {
+    me: withProfilePhoto?.profilePhotoUrl,
+    row: aliceRow?.profilePhotoUrl,
+  });
+  const aliceRowA = (await call("people:list", { userId: a })).find((p) => p.id === b);
+  check("People rows carry match, met, topics and notes for filters", typeof aliceRowA?.matchScore === "number" && typeof aliceRowA?.matched === "boolean" && typeof aliceRowA?.metAt === "number" && Array.isArray(aliceRowA?.topics), {
+    matchScore: aliceRowA?.matchScore,
+    matched: aliceRowA?.matched,
+    metAt: aliceRowA?.metAt,
+    topics: aliceRowA?.topics,
+    notes: aliceRowA?.notes?.slice(0, 60),
+  });
+
+  // Contact sharing: nothing is shared until the other person says yes
+  const linkedin = await call("sharing:saveItem", { userId: a, item: { kind: "linkedin", value: "@alice-test", includeByDefault: true } });
+  const github = await call("sharing:saveItem", { userId: a, item: { kind: "github", value: "alicetest", includeByDefault: false } });
+  const qr = await call("sharing:saveItem", { userId: a, item: { kind: "image", label: "My QR code", storageId: await upload(), includeByDefault: true } });
+  const bobEmail = await call("sharing:saveItem", { userId: b, item: { kind: "email", value: "bob@example.com" } });
+  let badEmail;
+  try {
+    await call("sharing:saveItem", { userId: b, item: { kind: "email", value: "not an email" } });
+  } catch (e) {
+    badEmail = String(e);
+  }
+  check("a bad email is rejected", badEmail?.includes("email"), badEmail);
+  const aliceItems = await call("sharing:items", { userId: a });
+  check("items saved in order, handles become links, images have a photo", aliceItems.length === 3 && aliceItems[0].url === "https://www.linkedin.com/in/alice-test" && aliceItems[1].url === "https://github.com/alicetest" && Boolean(aliceItems[2].photoUrl) && aliceItems[2].label === "My QR code", aliceItems.map((i) => [i.kind, i.url ?? i.photoUrl]));
+
+  const before0 = await call("sharing:with", { userId: b, otherId: a });
+  check("nothing is shared automatically", before0.theirs.length === 0 && before0.mine.length === 0 && !before0.incoming);
+
+  const offer = await call("sharing:request", { userId: a, otherId: b, kind: "offer" });
+  const offerAgain = await call("sharing:request", { userId: a, otherId: b, kind: "offer" });
+  check("one pending offer per pair", offer.requestId && offer.requestId === offerAgain.requestId);
+  const bobInbox = await call("sharing:inbox", { userId: b });
+  const card = bobInbox.find((r) => r.id === offer.requestId);
+  check("Bob gets an approval card with the default items, no values yet", card?.kind === "offer" && card.from?.id === a && card.items.length === 2 && card.items.every((i) => i.value === undefined && i.url === undefined), card);
+  const aliceSide = await call("sharing:with", { userId: a, otherId: b });
+  check("Alice sees it waiting", aliceSide.outgoing?.id === offer.requestId && !aliceSide.incoming);
+
+  await call("sharing:respond", { userId: b, requestId: offer.requestId, approve: true, itemIds: [bobEmail] });
+  const bobSees = await call("sharing:with", { userId: b, otherId: a });
+  const aliceSees = await call("sharing:with", { userId: a, otherId: b });
+  check("approved: Bob sees Alice's items, and his email is shared back", bobSees.theirs.length === 2 && bobSees.theirs.some((i) => i.id === linkedin) && bobSees.theirs.some((i) => i.id === qr) && !bobSees.theirs.some((i) => i.id === github) && aliceSees.theirs.length === 1 && aliceSees.theirs[0].url === "mailto:bob@example.com", {
+    bob: bobSees.theirs.map((i) => i.kind),
+    alice: aliceSees.theirs.map((i) => i.kind),
+  });
+  check("the card is gone after answering", (await call("sharing:inbox", { userId: b })).length === 0);
+  const flags = (await call("people:list", { userId: b })).find((p) => p.id === a);
+  check("People rows say shared with you", flags?.sharedWithMe === true && flags?.sharedByMe === true, { sharedWithMe: flags?.sharedWithMe, sharedByMe: flags?.sharedByMe });
+
+  await call("sharing:saveItem", { userId: a, item: { id: linkedin, kind: "linkedin", value: "https://www.linkedin.com/in/alice-new" } });
+  const live = await call("sharing:with", { userId: b, otherId: a });
+  check("shared items are live (an edit shows up)", live.theirs.find((i) => i.id === linkedin)?.url === "https://www.linkedin.com/in/alice-new");
+
+  const ask = await call("sharing:request", { userId: a, otherId: b, kind: "ask" });
+  await call("sharing:respond", { userId: b, requestId: ask.requestId, approve: false });
+  const afterDecline = await call("sharing:with", { userId: a, otherId: b });
+  check("declining an ask changes nothing", afterDecline.theirs.length === 1 && !afterDecline.outgoing && afterDecline.lastDeclinedAt > 0);
+
+  await call("sharing:revoke", { userId: a, otherId: b });
+  const revoked = await call("sharing:with", { userId: b, otherId: a });
+  check("revoke: Bob no longer sees Alice's items", revoked.theirs.length === 0 && revoked.mine.length === 1);
+
+  // Phase 6 hook: an Apple Watch handshake shares both ways once both approved
+  const half = await call("sharing:handshake", { userId: a, otherId: b, itemIds: [github] });
+  const whole = await call("sharing:handshake", { userId: b, otherId: a });
+  const afterShake = await call("sharing:with", { userId: b, otherId: a });
+  check("handshake: the first waits, the second completes a mutual share", half.status === "waiting" && whole.status === "complete" && afterShake.theirs.some((i) => i.id === github) && afterShake.mine.includes(bobEmail), {
+    half: half.status,
+    whole,
+    theirs: afterShake.theirs.map((i) => i.kind),
+  });
+
+  const stranger = await call("users:signIn", { phone: "+14155550192", name: "Test Carol" });
+  let notMet;
+  try {
+    await call("sharing:request", { userId: a, otherId: stranger, kind: "ask" });
+  } catch (e) {
+    notMet = String(e);
+  }
+  check("no requests to people you haven't met", notMet?.includes("met"), notMet);
+
   // Optional (E2E_SLOW=1, about 6 more minutes): meeting again after the window is a second encounter
   if (process.env.E2E_SLOW) {
     console.log("…waiting out the 5 minute window");

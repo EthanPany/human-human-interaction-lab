@@ -102,6 +102,34 @@ The numbers live in `src/lib/constants.ts` and in the app's `BadgeStore` (keep b
 - Follow up after meeting someone ("Nice meeting ... Quick recap: ... Save their contact? Reply Y", `api/followUp.ts`) waits for the summary, at most 2 minutes, and is dropped for encounters "Drop short encounters" removed.
 - Heads ups need both people at the event (checked in within 2 hours) and phones within about 300 m: the app reports a 100 m accuracy location every few minutes while open (`location:report {userId, lat, lng, accuracy}`, `location:clear {userId}`), stored on a 110 m grid in `coarse_locations` and deleted after 15 minutes. The text describes only the badge avatar (color and shape), the look they wrote themselves and one broad topic, never name, company, school or role (`lib/privacy.ts`). The agent's context hides the same details for people not met yet.
 
+## Contact sharing and profile photos
+
+Nothing is shared automatically. Each person keeps a list of things they could share (Settings > What I share in the app): LinkedIn, website, GitHub, X, Instagram, email, phone, a custom link, or an image such as a QR code (uploaded with `/upload` first). Each item has "include by default", which preselects it when sharing. Items are live: an edit or a delete shows up wherever the item is shared. Code: `src/api/sharing.ts`, tables in `src/sharingTables.ts` (`share_items`, `share_requests`, `share_grants`, `share_nudges`, `profile_photos`).
+
+| Path | Args | Returns |
+| --- | --- | --- |
+| `sharing:items` | `{userId}` | my items `[{id, kind, label, value, url, photoUrl, includeByDefault}]` (`url`: handles become profile links, `mailto:`, `tel:`) |
+| `sharing:saveItem` | `{userId, item: {id?, kind, label?, value?, storageId?, includeByDefault?}}` | the item id (no `id`: a new item; up to 20) |
+| `sharing:removeItem` | `{userId, itemId}` | null (also gone from every share) |
+| `sharing:reorder` | `{userId, itemIds}` | null |
+| `sharing:request` | `{userId, otherId, kind: "offer" \| "ask", itemIds?}` | `{requestId}`. `offer`: I share my items (default: my preselected ones). `ask`: I ask for theirs. One pending request per pair and kind; only between people who met (an encounter, a meeting or a saved contact). |
+| `sharing:respond` | `{userId, requestId, approve, itemIds?}` | `{status}`. For an ask, `itemIds` are what I share (default: my preselected ones). For an offer, approving accepts their items and `itemIds` (optional) shares mine back. |
+| `sharing:cancel` | `{userId, requestId}` | null (the sender takes a pending request back) |
+| `sharing:revoke` | `{userId, otherId, itemIds?}` | null (stop sharing some, default all, of mine with them) |
+| `sharing:inbox` | `{userId}` | pending offers and asks for me: `[{id, kind, createdAt, source, from: {id, name, headline, company, avatarShape, avatarColor, profilePhotoUrl}, items: [{id, kind, label}]}]` (offers show kinds and names only, no values) |
+| `sharing:with` | `{userId, otherId}` | `{theirs: [items shared with me], mine: [my item ids they see], incoming, outgoing, sharedWithMeAt, sharedByMeAt, lastDeclinedAt}` |
+| `sharing:handshake` | `{userId, otherId, itemIds?, source?}` | `{status: "waiting", requestId, expiresAt}` or `{status: "complete", requestId, sharedByMe, sharedWithMe}` |
+| `users:setProfilePhoto` | `{userId, storageId?}` | null (no `storageId` removes it) |
+
+- A new request queues one short iMessage nudge to the other person ("Maya asked for your contact info. Open People in the badge app ..."), outbox kind `share`. It is paced like every agent text (see above), dropped if the request is answered or cancelled before it goes out, expires after 30 minutes, and goes out at most once per sender and recipient per hour. Names are fine here: requests need the two to have met.
+- Answers are logged on both timelines (`people:detail` timeline, kind `shared`, and `share` for requests and revokes).
+- `people:list` rows add `profilePhotoUrl`, `sharedWithMe`, `sharedByMe`, and for search, filters and grouping `matchScore`, `matched` (clears the rubric threshold), `metAt` (first time together in person), `encounterCount`, `topics` and `notes` (the encounter summaries). `people:detail` adds `person.profilePhotoUrl`; `users:me` adds `profilePhotoUrl`.
+- The profile photo is the square photo for People rows and person pages. The badge keeps the jelly avatar, and the badge photo (`users:setPhoto`, used by the photo badge layouts) is separate.
+
+### Apple Watch handshake (Phase 6 hook)
+
+`sharing:handshake` makes a mutual share after both people approve. When the watches detect a handshake, each phone asks its owner (on the watch), and on yes calls `sharing:handshake {userId, otherId, itemIds?, source: "watch"}` with what that person chose to share (default: their preselected items). The first call stores a pending half (`share_requests.kind = "handshake"`) and returns `waiting` with `expiresAt`; the second call from the other person within 2 minutes (`HANDSHAKE_WINDOW_MS`) shares both ways at once and returns `complete` to the second caller; the first caller sees it by polling `sharing:with` (`theirs` fills in, `mine` lists what went out). A half nobody completes expires. Handshakes need no earlier meeting (they are one) and never show as approval cards or send texts. Calling again while waiting refreshes the half and its items.
+
 ## Differences from Convex
 
 - Same: sign in, profile, avatar defaults, photos and moments, Nearby tokens, distances, badge state, conversations (open, finish, stale cleanup, summaries), People list/detail/current, heads up texts, end of event, Jev scoring with Claude tags and reasons and the keyword fallback, the Photon text agent (first text greeting, contact card, held texts until they first write in), Photon 2.0 per user line assignment on every sign in (`users:me` returns `agentLine` and `agentConnected`).
