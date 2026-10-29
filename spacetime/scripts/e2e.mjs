@@ -364,11 +364,130 @@ async function main() {
   const cleared = await call("nearby:peers", { userId: a });
   check("badge off: no peers, Bluetooth ids gone", cleared.length === 0 && (await call("nearby:reportBle", { userId: b, sightings: [{ bleId: bleA.bleId, rssi: -45 }] })) === null);
 
+  await groupChecks();
+
   const gone = await call("users:me", { userId: "not-a-user" });
   check("unknown user is null (app signs out)", gone === null);
 
   console.log(failures ? `\n${failures} check(s) failed` : "\nAll checks passed");
   process.exit(failures ? 1 : 0);
+}
+
+/**
+ * Groups: three more fictional phones (Gina, Hugo, Ivy). Gina and Hugo meet,
+ * Ivy walks up to Hugo only and joins (one encounter, the pair's record), one
+ * phone records, California mode waits for all three, Ivy leaves and the pair
+ * goes on, Ivy comes back within 5 minutes to the same encounter, then they part.
+ */
+async function groupChecks() {
+  const phones = ["+14155550193", "+14155550194", "+14155550195"];
+  const [g, h, i] = [
+    await call("users:signIn", { phone: phones[0], name: "Test Gina" }),
+    await call("users:signIn", { phone: phones[1], name: "Test Hugo" }),
+    await call("users:signIn", { phone: phones[2], name: "Test Ivy" }),
+  ];
+  await call("testing:resetTestGroup", { phones });
+  for (const u of [g, h, i]) {
+    await call("users:updateProfile", { userId: u, patch: { californiaMode: false, dropShortEncounters: false } });
+    await call("users:heartbeat", { userId: u });
+    await call("nearby:setRanging", { userId: u, on: true });
+  }
+  const near = (x, y, m) => call("nearby:reportDistance", { userId: x, peerId: y, meters: m });
+  // Readings go stale after 8 s and a member with nobody in reach leaves after 3 s: keep the pairs fresh
+  const keep = async (pairs) => {
+    for (const [x, y, m] of pairs) await near(x, y, m);
+  };
+
+  await keep([[g, h, 0.8]]);
+  await sleep(1_200);
+  await keep([[h, g, 0.8]]);
+  const pair = await call("badge:state", { userId: g });
+  check("group: Gina and Hugo together (a pair: both phones record)", pair.mode === "talking" && pair.group === false && pair.members?.length === 1 && pair.isRecorder === true, {
+    mode: pair.mode,
+    group: pair.group,
+    members: pair.members?.map((m) => m.name),
+  });
+
+  await keep([[h, i, 0.9], [g, h, 0.8]]);
+  await sleep(1_200);
+  await keep([[i, h, 0.9], [g, h, 0.8]]);
+  const three = await call("badge:state", { userId: g });
+  check("group: Ivy joins through Hugo, the pair's encounter becomes the group's", three.group === true && three.conversationId === pair.conversationId && three.members?.length === 2, {
+    group: three.group,
+    same: three.conversationId === pair.conversationId,
+    members: three.members?.map((m) => m.name),
+  });
+  const views = await Promise.all([g, h, i].map((u) => call("badge:state", { userId: u })));
+  const recording = views.filter((v) => v.isRecorder).length;
+  check("group: exactly one phone records", recording === 1 && views.every((v) => v.conversationId === pair.conversationId), views.map((v) => [v.isRecorder, v.recordingAllowed]));
+  const recorder = [g, h, i][views.findIndex((v) => v.isRecorder)];
+
+  // California mode on for Ivy: recording waits for all three
+  await call("users:updateProfile", { userId: i, patch: { californiaMode: true } });
+  await keep([[g, h, 0.8], [h, i, 0.9]]);
+  const waiting = await call("badge:state", { userId: recorder });
+  check("group: California mode on for one member, recording waits", waiting.consentRequired === true && waiting.recordingAllowed === false);
+  for (const u of [g, h]) await call("conversations:consent", { conversationId: pair.conversationId, userId: u, agree: true });
+  const twoOfThree = await call("badge:state", { userId: recorder });
+  check("group: two of three yes is not enough", twoOfThree.recordingAllowed === false);
+  await call("conversations:consent", { conversationId: pair.conversationId, userId: i, agree: true });
+  const allYes = await call("badge:state", { userId: recorder });
+  check("group: all three said yes, the recorder records", allYes.recordingAllowed === true);
+
+  // The recorder uploads; an older phone sends the same stretch too (counts once)
+  const recStart = Date.now() - 10_000;
+  await call("conversations:finish", {
+    conversationId: pair.conversationId,
+    userId: recorder,
+    startedAt: recStart,
+    leaving: false,
+    transcript: "Gina: I run a robotics lab. Hugo: we need an iOS app for the arm. Ivy: I can design it. Gina: let's meet Friday.",
+  });
+  await call("conversations:finish", { conversationId: pair.conversationId, userId: [g, h, i].find((u) => u !== recorder), startedAt: recStart + 500, leaving: false, transcript: "robotics lab ios app" });
+
+  // Ivy steps away: after the short grace she is out, Gina and Hugo go on in the same encounter
+  await keep([[h, i, 3], [g, h, 0.8]]);
+  await sleep(3_300);
+  await keep([[h, i, 3], [g, h, 0.8]]);
+  await call("badge:state", { userId: i });
+  const ivyOut = await call("badge:state", { userId: i });
+  const pairAgain = await call("badge:state", { userId: g });
+  check("group: Ivy leaves, the pair goes on in the same encounter", ivyOut.mode !== "talking" && pairAgain.conversationId === pair.conversationId && pairAgain.members?.length === 1 && pairAgain.group === false, {
+    ivy: ivyOut.mode,
+    pair: pairAgain.members?.map((m) => m.name),
+  });
+
+  // Back within 5 minutes: the same encounter
+  await keep([[i, g, 0.7], [g, h, 0.8]]);
+  await sleep(1_200);
+  await keep([[i, g, 0.7], [g, h, 0.8]]);
+  const back = await call("badge:state", { userId: i });
+  check("group: Ivy back within 5 min rejoins the same encounter", back.conversationId === pair.conversationId && back.group === true, back.members?.map((m) => m.name));
+
+  // Everyone parts: one encounter for all three, with the others listed on each person page
+  await keep([[i, g, 4], [g, h, 4], [h, i, 4]]);
+  for (const u of [g, h, i]) await call("conversations:finish", { conversationId: pair.conversationId, userId: u });
+  const groupsOfGina = await call("groups:list", { userId: g });
+  const row = groupsOfGina.find((r) => r.id === pair.conversationId);
+  check("group: groups:list shows the group with both others", row?.memberCount === 3 && row.members.length === 2, row?.members?.map((m) => m.name));
+  const page = await call("people:detail", { userId: g, otherId: h });
+  const onPage = page?.encounters?.find((e) => e.id === pair.conversationId);
+  check("group: Hugo's page on Gina's side lists Ivy as also there", onPage?.group === true && onPage.others?.some((o) => o.id === i), onPage?.others?.map((o) => o.name));
+  const list = await call("people:list", { userId: h });
+  check("group: Ivy is in Hugo's People (they stood together only through the group)", list.some((p) => p.id === i) && list.some((p) => p.id === g));
+
+  console.log("…waiting for the group summary");
+  await sleep(14_000);
+  const detail = await call("groups:detail", { userId: i, conversationId: pair.conversationId });
+  check("group: groups:detail has one summary for everyone, highlights and each member", Boolean(detail?.summary) && Array.isArray(detail?.highlights) && detail.members.length === 2 && detail.hasTranscript === true, {
+    summary: detail?.summary,
+    highlights: detail?.highlights,
+    followUp: detail?.followUp,
+  });
+  const saved = await call("agent:confirmContact", { phone: phones[1] });
+  check("group: Y saves everyone from the group", typeof saved === "string" && saved.includes("Gina") && saved.includes("Ivy"), saved);
+
+  for (const u of [g, h, i]) await call("nearby:setRanging", { userId: u, on: false });
 }
 
 main().catch((e) => {

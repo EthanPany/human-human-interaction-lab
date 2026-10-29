@@ -94,6 +94,28 @@ The numbers live in `src/lib/constants.ts` and in the app's `BadgeStore` (keep b
 - Bluetooth assist: each worn badge advertises a short id from `nearby:bleId` (6 characters, rotates every 15 minutes, never the user id) and reports what it hears with `nearby:reportBle {userId, sightings: [{bleId, rssi}]}`. Bluetooth is coarse: it marks a peer "in the area" (`inArea` in `nearby:peers`), gives a distance estimate no closer than 2 m, and holds "together" while UWB is briefly blind (strong signal). It says "together" on its own only after 4 s with no UWB from either phone and a very strong signal (about -50 dBm); then `badge:state` says `estimated: true`.
 - `nearby:peers` is ordered by priority (the person I'm with, then matches in the area, others in the area by closeness, peers Bluetooth knows nothing about, and last those Bluetooth says are away; recency in 10 s steps) and says `isMatch`, `priority`, `inArea`, `bleId`, the merged `meters` and `source`, and for matches the pair `color` and their `avatarColor`; the phone ranges with the first few (UWB sessions are limited).
 
+## Groups: three or more together
+
+Code: `src/api/groups.ts`, tables in `src/groupTables.ts` (`encounter_members`, `encounter_recorders`, `transcript_parts`, `group_summaries`). A pair is a group of two, so pairs run through the same logic.
+
+- Who is in it: two people are linked when their pair has been within 1 m for a second (or is still under 1.5 m and both are already in the encounter). Everyone connected through links is one group: each member within 1 m of at least one other, the group connected. Each reading (`nearby:reportDistance`, `nearby:reportBle`) brings encounters in line.
+- Joining: someone linking up with an open encounter joins it. A pair that gains a third person becomes the group's encounter and keeps its record, start time and transcript.
+- Leaving: someone with nobody in reach for 3 s (`GROUP_LEAVE_GRACE_MS`) leaves, or at once when their badge goes off; the rest go on in the same encounter. Fewer than two left ends it. Back within 5 minutes after leaving continues the same encounter (per person). Two encounters that walk into each other: the one with more people there (then the older) goes on, the others move over. A group that splits: the larger part keeps it (a tie: the part with whoever has been there longest), the other part starts its own.
+- Drop short encounters: per person, by their own time in the encounter. Hidden for everyone: deleted once it can no longer be rejoined.
+- California mode: if anyone there has it on, recording waits until everyone there said yes. A newcomer pauses it until they answer.
+- Recording: a pair records on both phones (the longer transcript wins, as before). A group (three or more there) records on one phone, `encounter_recorders`: kept while it is there, otherwise whoever is within 1 m of the most members, then whoever has been there longest. `badge:state` says `isRecorder`, and `recordingAllowed` is true only on the recorder. Phones upload pieces with `conversations:finish {conversationId, userId, transcript, startedAt, leaving}` (`leaving: false` uploads without leaving, when a phone stops being the recorder or recording pauses). Pieces that cover mostly the same time are the same talk heard twice (the longer counts); pieces one after another are joined in time order. Older apps send no `userId`: their piece covers the segment, and their finish ends a pair as before.
+- Summary: one per group encounter, covering everyone, with up to 4 highlights and a follow up idea for each person (`summarize.ts`).
+- Follow up text: "Nice meeting Maya and Leo. Quick recap: ... Follow up idea: ... Save their contacts? Reply Y". Y saves everyone from it. Someone who left a group that goes on gets theirs when it ends, or 10 minutes after they left without the recap.
+
+`badge:state` adds `group` (three or more there now), `members` (everyone else there, first joined first: `{id, name, avatarShape, avatarColor, matched, color, joinedAt, consent}`, `color` for matches only) and `isRecorder`; the peer fields describe the member I'm most connected to, for older apps.
+
+| Path | Args | Returns |
+| --- | --- | --- |
+| `groups:list` | `{userId}` | my group encounters, newest first: `[{id, startedAt, endedAt, durationMs, myDurationMs, summary, topics, memberCount, members: [{id, name, headline, company, avatarShape, avatarColor, profilePhotoUrl, present}]}]` |
+| `groups:detail` | `{userId, conversationId}` | the same plus `followUp` (mine), `highlights`, `hasTranscript`, and per member `joinedAt`, `leftAt`, `matched`, `color`, `saved` |
+
+`people:detail` encounters add `group` and `others` (who else was there, besides that person); `people:list` includes everyone I was in a group with. `testing:resetTestGroup {phones}` resets the e2e group phones.
+
 ## Text agent: one reply per text, paced, private
 
 - Every inbound iMessage is stored once in `agent_inbox` (key: Photon message id). Texts that arrive within about 4 s of each other are one turn, and each turn gets exactly one reply (`agent_turns`, key: the burst's last message id). A tick claims a turn before calling Claude, stores the reply before sending, and sends it with the idempotency key `reply:<inbound id>`, so overlapping ticks and retries never send a second copy. The first ever reply is followed by the agent's contact card, once per person.
