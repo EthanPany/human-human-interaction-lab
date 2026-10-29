@@ -1,5 +1,6 @@
 import { schema, table, t, type InferSchema, type ReducerCtx } from "spacetimedb/server";
 import { sharingTables } from "./sharingTables";
+import { groupTables } from "./groupTables";
 
 /**
  * Data model, mirroring backend/convex/schema.ts.
@@ -508,6 +509,8 @@ const spacetimedb = schema(
     photonAssignJob,
     // Contact sharing and profile photos (sharingTables.ts)
     ...sharingTables,
+    // Group encounters, three or more together (groupTables.ts)
+    ...groupTables,
   },
   {
     // Secrets and settings, set with `spacetime publish` (see README).
@@ -534,3 +537,4 @@ export type Tx = ReducerCtx<S>;
 export type User = NonNullable<ReturnType<Tx["db"]["users"]["id"]["find"]>>;
 export type Conversation = NonNullable<ReturnType<Tx["db"]["conversations"]["id"]["find"]>>;
 export type Encounter = NonNullable<ReturnType<Tx["db"]["encounters"]["conversationId"]["find"]>>;
+export type EncounterMember = NonNullable<ReturnType<Tx["db"]["encounterMembers"]["id"]["find"]>>;

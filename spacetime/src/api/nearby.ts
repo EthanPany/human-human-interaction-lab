@@ -12,7 +12,6 @@ import {
   NEARBY_ACTIVE_MS,
   PROXIMITY_FRESH_MS,
   STANDARD_RANGE_M,
-  TALK_AFTER_MS,
   TALK_DISTANCE_M,
   TALK_EXIT_DISTANCE_M,
   UWB_FRESH_MS,
@@ -20,10 +19,10 @@ import {
   UWB_MERGE_MS,
 } from "../lib/constants";
 import { avatarOf } from "../lib/avatar";
-import { canonicalPair, directedKey, isMatchPair, matchOf, newId, nowMs, openConversationOf, pairColor, pairKey } from "../lib/db";
+import { canonicalPair, directedKey, isMatchPair, matchOf, newId, nowMs, pairColor, pairKey } from "../lib/db";
 import { isDemoPhone } from "../lib/phone";
 import type { Tx } from "../schema";
-import { openConversation } from "./conversations";
+import { leave, openEncounterOf, reconcile, togetherNow } from "./groups";
 import { markMet } from "./people";
 import { ArgError, num, str, type Ctx } from "./context";
 
@@ -82,8 +81,9 @@ function mergedDistance(tx: Tx, x: string, y: string, now: number, wasClose: boo
 }
 
 /**
- * Recompute the pair's proximity row from both phones' readings, and start
- * (or continue) an encounter when they have been together for a moment.
+ * Recompute the pair's proximity row from both phones' readings, then bring
+ * encounters in line (groups.ts): together for a moment starts or continues
+ * one, a third person joining makes it a group, apart leaves it.
  */
 function updatePair(tx: Tx, x: string, y: string, now: number) {
   const pair = canonicalPair(x, y);
@@ -103,14 +103,12 @@ function updatePair(tx: Tx, x: string, y: string, now: number) {
   } else {
     tx.db.proximity.insert({ id, ...pair, meters, at: now, closeSince, minMeters: meters });
   }
-  if (closeSince === undefined) return;
-
-  const matched = isMatchPair(tx, x, y);
   // Just came close: a matched pair met. Each shows up in the other's People
   // list (others join it once their encounter is kept).
-  if (!wasClose && matched) markMet(tx, x, y);
-  // Together long enough: an encounter starts (or continues), match or not.
-  if (now - closeSince >= TALK_AFTER_MS) openConversation(tx, pair.a, pair.b, matched);
+  if (closeSince !== undefined && !wasClose && isMatchPair(tx, x, y)) markMet(tx, x, y);
+  // Together for TALK_AFTER_MS starts (or continues, or grows) an encounter,
+  // match or not; apart from everyone in it, a person leaves it.
+  if (closeSince !== undefined || wasClose || openEncounterOf(tx, x) || openEncounterOf(tx, y)) reconcile(tx, [x, y], now);
 }
 
 // Bluetooth ids ---------------------------------------------------------------------
@@ -205,7 +203,7 @@ export function peers({ tx }: Ctx, args: Record<string, unknown>) {
     const theirs = tx.db.nearbyTokens.id.find(directedKey(u.id, userId));
     const isMatch = isMatchPair(tx, userId, u.id);
     const score = Math.max(matchOf(tx, userId, u.id)?.score ?? 0, matchOf(tx, u.id, userId)?.score ?? 0);
-    const inEncounter = openConversationOf(tx, userId, u.id) !== null;
+    const inEncounter = togetherNow(tx, userId, u.id);
     const row = tx.db.proximity.id.find(pairKey(userId, u.id));
     const fresh = row != null && now - row.at < PROXIMITY_FRESH_MS;
     const rssi = bleRssiOf(tx, userId, u.id, now);
@@ -296,6 +294,9 @@ export function setRanging({ tx }: Ctx, args: Record<string, unknown>) {
     return null;
   }
   if (row) tx.db.ranging.userId.delete(userId);
+  // Badge off: out of their encounter at once (the rest of a group goes on)
+  const open = openEncounterOf(tx, userId);
+  if (open) leave(tx, open, userId, now);
   for (const r of [...tx.db.proximity.a.filter(userId), ...tx.db.proximity.b.filter(userId)]) {
     tx.db.proximity.id.delete(r.id);
     tx.db.extendedPairs.id.delete(r.id);

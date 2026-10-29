@@ -38,6 +38,22 @@ export const REJOIN_WINDOW_MS = 5 * 60 * 1000;
 export const MIN_ENCOUNTER_MS = 60 * 1000;
 
 /**
+ * Groups (api/groups.ts): three or more people together share one encounter.
+ * Everyone within TALK_DISTANCE_M of at least one member, and the group
+ * connected, is in it; each person leaves past TALK_EXIT_DISTANCE_M from
+ * everyone in it. The app shows up to BADGE_GROUP_SHOWN other avatars.
+ */
+export const MIN_GROUP_SIZE = 3;
+/** Nobody in reach for this long: that person has left the encounter (readings jitter, people shuffle). */
+export const GROUP_LEAVE_GRACE_MS = 3_000;
+/** The largest group one encounter follows (a crowd standing close stays bounded). */
+export const MAX_GROUP_SIZE = 12;
+/** Left a group that goes on: their follow up text waits at most this long for the group to end. */
+export const LEFT_GROUP_FOLLOW_UP_WAIT_MS = 10 * 60 * 1000;
+/** Transcript pieces covering at least this share of the shorter one's time are duplicates (several phones recorded the same talk). */
+export const PART_OVERLAP_SHARE = 0.5;
+
+/**
  * Both phones report their own UWB reading of each other (pair_readings), and
  * the pair's distance is merged from both: when both sides read within this
  * long, the smaller one counts (a body or a turned phone only ever makes UWB
