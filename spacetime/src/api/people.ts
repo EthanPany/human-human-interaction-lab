@@ -1,8 +1,10 @@
 import { avatarOf } from "../lib/avatar";
-import { canonicalPair, connectionOf, conversationsOf, log, meetingsOf, nowMs, otherOf, pairKey } from "../lib/db";
+import { canonicalPair, connectionOf, conversationsOf, loadRubric, log, matchOf, meetingsOf, nowMs, otherOf, pairKey } from "../lib/db";
 import type { Conversation, Tx, User } from "../schema";
 import { hiddenFrom, togetherMs } from "./conversations";
 import { str, type Ctx } from "./context";
+import { profilePhotoIdOf } from "./profilePhoto";
+import { sharesWith } from "./sharing";
 
 /** Port of backend/convex/people.ts (the People tab and the iPhone Duo). */
 
@@ -21,6 +23,7 @@ function publicProfile(ctx: Ctx, u: User | null) {
     avatarShape: avatar.shape,
     avatarColor: avatar.color,
     photoUrl: ctx.photoUrl(u.photoId),
+    profilePhotoUrl: ctx.photoUrl(profilePhotoIdOf(ctx.tx, u.id)),
   };
 }
 
@@ -82,7 +85,10 @@ function minutes(ms: number) {
 /**
  * The People tab: everyone I saved, met in person (matches) or had an
  * encounter with (anyone), newest first. `connectedAt` is when they joined the
- * list; `saved` says whether I saved their contact.
+ * list; `saved` says whether I saved their contact. For search, filters and
+ * grouping in the app: `matchScore` and `matched` (the pair's score clears the
+ * rubric), `metAt` (first time together in person, missing if never),
+ * `encounterCount`, `topics` and `notes` (every summary), and the sharing flags.
  */
 export function list(ctx: Ctx, args: Record<string, unknown>) {
   const { tx } = ctx;
@@ -96,11 +102,32 @@ export function list(ctx: Ctx, args: Record<string, unknown>) {
   for (const c of conversationsOf(tx, userId)) if (!hiddenFrom(tx, c, userId)) add(otherOf(c, userId), c.startedAt, false);
   for (const c of tx.db.connections.owner.filter(userId)) add(c.other, c.at, true);
   const out = [];
+  const threshold = loadRubric(tx).threshold;
   for (const [otherId, entry] of entries) {
     const other = publicProfile(ctx, tx.db.users.id.find(otherId));
     if (!other) continue;
-    const lastSummary = encountersWith(tx, userId, otherId).find((c) => c.summary)?.summary;
-    out.push({ ...other, connectedAt: entry.at, saved: entry.saved, lastSummary });
+    const mine = encountersWith(tx, userId, otherId);
+    const lastSummary = mine.find((c) => c.summary)?.summary;
+    const score = Math.max(matchOf(tx, userId, otherId)?.score ?? 0, matchOf(tx, otherId, userId)?.score ?? 0);
+    const meeting = tx.db.meetings.id.find(pairKey(userId, otherId));
+    const firstTogether = mine.length ? mine[mine.length - 1].startedAt : undefined;
+    const metAt = meeting ? Math.min(meeting.firstAt, firstTogether ?? Infinity) : firstTogether;
+    const topics = [...new Set(mine.flatMap((c) => c.topics ?? []))].slice(0, 12);
+    const notes = mine.map((c) => c.summary?.trim()).filter(Boolean).join("\n").slice(0, 1500) || undefined;
+    out.push({
+      ...other,
+      connectedAt: entry.at,
+      saved: entry.saved,
+      lastSummary,
+      matchScore: score,
+      matched: score >= threshold,
+      metAt,
+      encounterCount: mine.length,
+      topics,
+      notes,
+      sharedWithMe: sharesWith(tx, otherId, userId),
+      sharedByMe: sharesWith(tx, userId, otherId),
+    });
   }
   return out.sort((x, y) => y.connectedAt - x.connectedAt);
 }
