@@ -1,8 +1,9 @@
 import { DEFAULT_RUBRIC } from "../lib/constants";
 import { normalizePhone } from "../lib/phone";
-import { connectionOf, conversationsOf, directedKey, log, newId, nowMs, otherOf, scheduleRescoreAll } from "../lib/db";
+import { connectionOf, directedKey, log, newId, nowMs, scheduleRescoreAll } from "../lib/db";
 import { anonymousHint } from "../lib/privacy";
 import type { Tx } from "../schema";
+import { encountersOfUser, firstNames, joinNames } from "./groups";
 import { haveMet } from "./notify";
 import { applyPatch, blankUser, parsePatch, userByPhone } from "./users";
 
@@ -17,15 +18,14 @@ export function context(tx: Tx, phone: string) {
   const user = userByPhone(tx, phone);
   if (!user) return { user: null, pendingContact: null, topMatches: [] };
 
-  // Most recent finished conversation that I have not saved yet.
-  const convos = conversationsOf(tx, user.id).sort((x, y) => y.startedAt - x.startedAt);
+  // Most recent finished encounter, if I have not saved everyone from it yet (a group names them all).
   let pendingContact = null;
-  for (const c of convos) {
+  for (const { c, others } of encountersOfUser(tx, user.id)) {
     if (c.endedAt === undefined) continue;
-    const other = otherOf(c, user.id);
-    if (!connectionOf(tx, user.id, other)) {
-      const o = tx.db.users.id.find(other);
-      pendingContact = { userId: other, name: o?.name ?? "them" };
+    const unsaved = others.filter((o) => !connectionOf(tx, user.id, o));
+    if (unsaved.length) {
+      const name = unsaved.length === 1 ? tx.db.users.id.find(unsaved[0])?.name ?? "them" : joinNames(firstNames(tx, unsaved));
+      pendingContact = { userId: unsaved[0], name, userIds: unsaved };
     }
     break;
   }
@@ -60,18 +60,21 @@ export function saveProfile(tx: Tx, phone: string, patch: Record<string, unknown
   applyPatch(tx, user.id, parsePatch(patch));
 }
 
-/** "Y" after a conversation: save the most recent unsaved person. */
+/** "Y" after a conversation: save the most recent unsaved people (everyone from a group at once). */
 export function confirmContact(tx: Tx, phone: string): string | null {
   const user = userByPhone(tx, phone);
   if (!user) return null;
-  const convos = conversationsOf(tx, user.id).sort((x, y) => y.startedAt - x.startedAt);
-  for (const c of convos) {
-    const other = otherOf(c, user.id);
-    if (connectionOf(tx, user.id, other)) continue;
-    tx.db.connections.insert({ id: directedKey(user.id, other), owner: user.id, other, at: nowMs(tx) });
-    const o = tx.db.users.id.find(other);
-    log(tx, user.id, other, "saved", `Saved ${o?.name ?? "contact"} (confirmed by text)`);
-    return o?.name ?? "them";
+  for (const { others } of encountersOfUser(tx, user.id)) {
+    const unsaved = others.filter((o) => !connectionOf(tx, user.id, o));
+    if (!unsaved.length) continue;
+    const names: string[] = [];
+    for (const other of unsaved) {
+      tx.db.connections.insert({ id: directedKey(user.id, other), owner: user.id, other, at: nowMs(tx) });
+      const o = tx.db.users.id.find(other);
+      log(tx, user.id, other, "saved", `Saved ${o?.name ?? "contact"} (confirmed by text)`);
+      names.push(o?.name ?? "them");
+    }
+    return names.length === 1 ? names[0] : joinNames(names);
   }
   return null;
 }

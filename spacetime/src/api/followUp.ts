@@ -1,6 +1,7 @@
-import { MIN_ENCOUNTER_MS } from "../lib/constants";
+import { LEFT_GROUP_FOLLOW_UP_WAIT_MS, MIN_ENCOUNTER_MS } from "../lib/constants";
 import { dropsShortEncounters, nowMs, queueText } from "../lib/db";
 import type { Tx } from "../schema";
+import { companionsOf, firstNames, isGroupEncounter, joinNames, memberOf } from "./groups";
 
 /**
  * The text after you meet someone ("Nice meeting Maya ... Save their
@@ -8,6 +9,11 @@ import type { Tx } from "../schema";
  * so the recap is in the same text, and goes out without it if the summary
  * fails or takes longer than about 2 minutes. Short encounters that the
  * encounter logic discards get no text at all.
+ *
+ * Groups: "Nice meeting Maya and Leo. Quick recap: ... Save their contacts?
+ * Reply Y" names everyone the person was with, and the follow up idea is
+ * their own. Someone who left a group that goes on gets theirs when it ends
+ * (with the recap), or LEFT_GROUP_FOLLOW_UP_WAIT_MS after they left without it.
  */
 
 export const FOLLOW_UP_WAIT_MS = 120_000;
@@ -59,20 +65,45 @@ export function followUpText(tx: Tx, phone: string, conversationId: string | und
 
   // "Drop short encounters" (conversations.ts): hidden for me means no text at all.
   const enc = tx.db.encounters.conversationId.find(c.id);
+  const mine = memberOf(tx, c, me.id);
+  const myMs = mine?.activeMs ?? enc?.activeMs;
   if (enc?.hiddenFor.includes(me.id)) return { drop: "short encounter (dropped)" };
-  if (enc && enc.activeMs < MIN_ENCOUNTER_MS && dropsShortEncounters(tx, me.id)) return { drop: "short encounter" };
 
-  if (c.endedAt === undefined) return { hold: true }; // they came back together: wait until it ends
-  const ready = hasSummary(c.summary);
-  if (!ready && nowMs(tx) < (holdUntil ?? 0)) return { hold: true };
+  const now = nowMs(tx);
+  let ready = hasSummary(c.summary);
+  if (c.endedAt === undefined) {
+    // They came back together (or I'm still with the group): wait until it ends
+    if (!mine || mine.presentSince !== undefined) return { hold: true };
+    // I left a group that goes on: wait for its summary, but not forever
+    if (now < (mine.leftAt ?? 0) + LEFT_GROUP_FOLLOW_UP_WAIT_MS) return { hold: true };
+    ready = false;
+  } else if (!ready && now < (holdUntil ?? 0)) {
+    return { hold: true };
+  }
+  if (myMs !== undefined && myMs < MIN_ENCOUNTER_MS && dropsShortEncounters(tx, me.id)) return { drop: "short encounter" };
 
-  const followUp = c.a === me.id ? c.followUpForA : c.followUpForB;
-  const name = them?.name ?? "them";
+  if (isGroupEncounter(tx, c)) {
+    const others = companionsOf(tx, c, me.id);
+    if (others.length >= 2) {
+      const followUp = mine?.followUp;
+      const parts = [
+        `Nice meeting ${joinNames(firstNames(tx, others))}.`,
+        ready ? `Quick recap: ${c.summary!.trim()}` : undefined,
+        ready && followUp ? `Follow up idea: ${followUp.trim()}` : undefined,
+        "Save their contacts? Reply Y",
+      ].filter(Boolean);
+      return { body: parts.join(" ") };
+    }
+  }
+
+  const followUp = mine?.followUp ?? (c.a === me.id ? c.followUpForA : c.followUpForB);
+  const pairOther = isGroupEncounter(tx, c) ? tx.db.users.id.find(companionsOf(tx, c, me.id)[0] ?? otherId) : them;
+  const name = pairOther?.name ?? "them";
   const parts = [
-    `Nice meeting ${name}${them?.headline ? ` (${them.headline})` : ""}.`,
+    `Nice meeting ${name}${pairOther?.headline ? ` (${pairOther.headline})` : ""}.`,
     ready ? `Quick recap: ${c.summary!.trim()}` : undefined,
     ready && followUp ? `Follow up idea: ${followUp.trim()}` : undefined,
-    `Save ${them?.name ? `${name}'s` : "their"} contact? Reply Y`,
+    `Save ${pairOther?.name ? `${name}'s` : "their"} contact? Reply Y`,
   ].filter(Boolean);
   return { body: parts.join(" ") };
 }

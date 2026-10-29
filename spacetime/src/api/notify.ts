@@ -1,7 +1,8 @@
 import { ACTIVE_WINDOW_MS, GLOW_RANGE_M, HEADSUP_COOLDOWN_MS } from "../lib/constants";
-import { connectionOf, conversationsOf, latestConversation, loadRubric, log, matchOf, newId, nowMs, otherOf, pairKey, proximityOf, queueText } from "../lib/db";
+import { connectionOf, latestConversation, loadRubric, log, matchOf, newId, nowMs, otherOf, pairKey, proximityOf, queueText } from "../lib/db";
 import { headsUpText } from "../lib/privacy";
 import { hasSummary } from "./followUp";
+import { encountersOfUser, encountersTogether, firstNames, joinNames } from "./groups";
 import { freshLocation, roughlyTogether } from "./location";
 import type { Tx } from "../schema";
 
@@ -12,7 +13,9 @@ const HEADSUP_TTL_MS = 10 * 60_000;
 
 /** Have these two met or talked already? Then names are fine; before that, the agent stays vague. */
 export function haveMet(tx: Tx, me: string, other: string) {
-  return Boolean(tx.db.meetings.id.find(pairKey(me, other)) || latestConversation(tx, me, other) || connectionOf(tx, me, other));
+  return Boolean(
+    tx.db.meetings.id.find(pairKey(me, other)) || latestConversation(tx, me, other) || connectionOf(tx, me, other) || encountersTogether(tx, me, other).length,
+  );
 }
 
 /**
@@ -61,18 +64,19 @@ export function endEvent(tx: Tx) {
   for (const me of [...tx.db.users.iter()]) {
     // One text per person, not one per conversation: the agent never piles texts on someone.
     const lines: string[] = [];
-    for (const c of conversationsOf(tx, me.id)) {
+    for (const { c, others } of encountersOfUser(tx, me.id)) {
       if (!hasSummary(c.summary)) continue;
-      const o = tx.db.users.id.find(otherOf(c, me.id));
-      const followUp = c.a === me.id ? c.followUpForA : c.followUpForB;
-      lines.push(`${o?.name ?? "Someone"}: ${c.summary}${followUp ? ` Follow up idea: ${followUp}` : ""}`);
+      const who = others.length === 1 ? tx.db.users.id.find(others[0])?.name ?? "Someone" : joinNames(firstNames(tx, others));
+      const member = tx.db.encounterMembers.id.find(`${c.id}|${me.id}`);
+      const followUp = member?.followUp ?? (c.a === me.id ? c.followUpForA : c.followUpForB);
+      lines.push(`${who}: ${c.summary}${followUp ? ` Follow up idea: ${followUp}` : ""}`);
     }
 
     const intros: string[] = [];
     const near = proximityOf(tx, me.id).filter((p) => p.minMeters <= GLOW_RANGE_M * 2);
     for (const p of near) {
       const otherId = otherOf(p, me.id);
-      const talked = latestConversation(tx, me.id, otherId);
+      const talked = latestConversation(tx, me.id, otherId) || encountersTogether(tx, me.id, otherId).length > 0;
       const match = matchOf(tx, me.id, otherId);
       const introduced = [...tx.db.notifications.owner.filter(me.id)].some((n) => n.other === otherId && n.kind === "intro");
       if (talked || introduced || !match || match.score < rubric.threshold) continue;
