@@ -92,6 +92,44 @@ const proximity = table(
   },
 );
 
+/**
+ * Each phone's own latest UWB reading of a peer (directed: userId|peerId).
+ * Both directions are merged into the pair's proximity row (nearby.ts).
+ */
+const pairReadings = table(
+  { name: "pair_readings" },
+  {
+    id: t.string().primaryKey(),
+    userId: t.string().index("btree"),
+    peerId: t.string().index("btree"),
+    meters: t.f64(),
+    at: t.f64(),
+  },
+);
+
+/** Rotating short Bluetooth ids badges advertise (never the user id). */
+const bleIds = table(
+  { name: "ble_ids" },
+  {
+    id: t.string().primaryKey(),
+    userId: t.string().index("btree"),
+    issuedAt: t.f64(),
+    expiresAt: t.f64(),
+  },
+);
+
+/** The latest Bluetooth signal strength a badge heard from another (directed: observer|seen). */
+const bleSightings = table(
+  { name: "ble_sightings" },
+  {
+    id: t.string().primaryKey(),
+    observer: t.string().index("btree"),
+    seen: t.string().index("btree"),
+    rssi: t.f64(),
+    at: t.f64(),
+  },
+);
+
 const matches = table(
   { name: "matches" },
   {
@@ -435,6 +473,9 @@ const spacetimedb = schema(
     nearbyTokens,
     ranging,
     proximity,
+    pairReadings,
+    bleIds,
+    bleSightings,
     matches,
     conversations,
     encounters,

@@ -37,6 +37,50 @@ export const REJOIN_WINDOW_MS = 5 * 60 * 1000;
 /** "Drop short encounters" (on by default): encounters shorter than this leave no record, summary or text. */
 export const MIN_ENCOUNTER_MS = 60 * 1000;
 
+/**
+ * Both phones report their own UWB reading of each other (pair_readings), and
+ * the pair's distance is merged from both: when both sides read within this
+ * long, the smaller one counts (a body or a turned phone only ever makes UWB
+ * read too far, or not at all); otherwise the freshest one. One side seeing
+ * the other is enough.
+ */
+export const UWB_MERGE_MS = 1_000;
+/** A UWB reading this recent still counts for the pair (before falling back to Bluetooth). */
+export const UWB_FRESH_MS = 2_500;
+
+/**
+ * Bluetooth assist (nearby:reportBle). Each badge advertises a rotating short
+ * id from the server (never the user id) and reports the signal strength
+ * (RSSI, dBm) of the badges it hears. It is a coarse signal only: "in the
+ * area" (approach cues, waking UWB sessions, slot priority). It decides
+ * "together" only when UWB had nothing for the pair for UWB_LOST_FOR_ESTIMATE_MS
+ * and the signal is very strong, and then the badge says it is estimated.
+ */
+export const BLE_FRESH_MS = 6_000;
+/** Heard at least this strong: in the area. */
+export const BLE_IN_AREA_RSSI = -88;
+/** Rough distance from RSSI: this at 1 m, path loss exponent below (a crowd absorbs a lot). */
+export const BLE_RSSI_AT_1M = -59;
+export const BLE_PATH_LOSS = 2.2;
+/** A Bluetooth estimate never says closer than this, unless it is very strong (below). */
+export const BLE_MIN_ESTIMATE_M = 2;
+/** Very strong: two lanyards about an arm's length apart. */
+export const BLE_TOGETHER_RSSI = -50;
+/** No UWB reading from either side for this long before Bluetooth may say "together". */
+export const UWB_LOST_FOR_ESTIMATE_MS = 4_000;
+/** Together already and still this strong: stay together while UWB is briefly blind. */
+export const BLE_HOLD_RSSI = -62;
+/** Bluetooth estimates further than this don't write a distance (only "in the area"). */
+export const BLE_PROXIMITY_MAX_M = 15;
+/** A badge's Bluetooth id changes this often; the previous one still resolves for the grace. */
+export const BLE_ID_ROTATE_MS = 15 * 60 * 1000;
+export const BLE_ID_GRACE_MS = 2 * 60 * 1000;
+
+/** Rough meters from a Bluetooth signal strength (dBm). */
+export function bleEstimateM(rssi: number) {
+  return Math.max(0.3, Math.min(60, Math.pow(10, (BLE_RSSI_AT_1M - rssi) / (10 * BLE_PATH_LOSS))));
+}
+
 /** How strongly a match shows, 0 at the pair's respond range up to 1 at talking distance. */
 export function closenessAt(meters: number, rangeM: number) {
   const span = Math.max(0.1, rangeM - TALK_DISTANCE_M);

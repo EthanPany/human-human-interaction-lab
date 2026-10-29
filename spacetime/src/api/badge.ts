@@ -1,5 +1,5 @@
 import { avatarOf } from "../lib/avatar";
-import { closenessAt, PROXIMITY_FRESH_MS } from "../lib/constants";
+import { closenessAt, PROXIMITY_FRESH_MS, TALK_DISTANCE_M } from "../lib/constants";
 import {
   connectionOf,
   loadRubric,
@@ -13,6 +13,7 @@ import {
   respondFromOf,
 } from "../lib/db";
 import { consentState } from "./conversations";
+import { distanceSourceOf } from "./nearby";
 import { str, type Ctx } from "./context";
 
 /**
@@ -39,6 +40,15 @@ export function state({ tx }: Ctx, args: Record<string, unknown>) {
     peerAvatarShape: undefined as string | undefined,
     peerAvatarColor: undefined as string | undefined,
     closeness: 0,
+    /**
+     * The pair's distance merged from both phones (nearby.ts): either side
+     * seeing the other is enough. `distanceSource` is uwb, or ble for a coarse
+     * Bluetooth estimate; `estimated` means Bluetooth alone says together.
+     */
+    meters: undefined as number | undefined,
+    distanceAgeMs: undefined as number | undefined,
+    distanceSource: undefined as "uwb" | "ble" | undefined,
+    estimated: false,
     /** Where this pair's badges start reacting (meters); mine alone when nobody is near. */
     respondRangeM: me ? respondFromOf(tx, userId) : undefined as number | undefined,
     conversationId: undefined as string | undefined,
@@ -86,6 +96,7 @@ export function state({ tx }: Ctx, args: Record<string, unknown>) {
   const consent = talking && open ? consentState(tx, open, userId) : undefined;
 
   const closeness = talking ? 1 : closenessAt(best.row.meters, best.rangeM);
+  const source = distanceSourceOf(tx, best.row);
   const peerAvatar = peer ? avatarOf({ _id: peer.id, avatarShape: peer.avatarShape, avatarColor: peer.avatarColor }) : undefined;
   return {
     ...base,
@@ -99,6 +110,10 @@ export function state({ tx }: Ctx, args: Record<string, unknown>) {
     peerAvatarShape: peerAvatar?.shape,
     peerAvatarColor: peerAvatar?.color,
     closeness,
+    meters: best.row.meters,
+    distanceAgeMs: now - best.row.at,
+    distanceSource: source,
+    estimated: source === "ble" && best.row.closeSince !== undefined && best.row.meters <= TALK_DISTANCE_M,
     respondRangeM: best.rangeM,
     conversationId: talking ? open?.id : undefined,
     consentRequired: consent?.required ?? false,

@@ -40,6 +40,8 @@ const FUNCTIONS: Record<string, ApiFn> = {
   "nearby:uploadToken": nearby.uploadToken,
   "nearby:reportDistance": nearby.reportDistance,
   "nearby:setRanging": nearby.setRanging,
+  "nearby:bleId": nearby.bleId,
+  "nearby:reportBle": nearby.reportBle,
   "conversations:finish": conversations.finish,
   "conversations:consent": conversations.consent,
   "people:list": people.list,

@@ -18,6 +18,10 @@ export function resetTestPair({ tx }: Ctx, args: Record<string, unknown>) {
   tx.db.extendedPairs.id.delete(pairKey(x, y));
   for (const id of ids) tx.db.userPrefs.userId.delete(id);
   tx.db.proximity.id.delete(pairKey(x, y));
+  tx.db.pairReadings.id.delete(directedKey(x, y));
+  tx.db.pairReadings.id.delete(directedKey(y, x));
+  tx.db.bleSightings.id.delete(directedKey(x, y));
+  tx.db.bleSightings.id.delete(directedKey(y, x));
   tx.db.meetings.id.delete(pairKey(x, y));
   for (const [owner, other] of [[x, y], [y, x]]) {
     tx.db.connections.id.delete(directedKey(owner, other));
