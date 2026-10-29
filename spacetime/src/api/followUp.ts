@@ -24,6 +24,8 @@ export function queueFollowUp(tx: Tx, conversationId: string, userId: string) {
   if (!me) return undefined;
   for (const m of tx.db.outboxMeta.iter()) {
     if (m.kind === "followup" && m.conversationId === conversationId && tx.db.outbox.id.find(m.outboxId)?.phone === me.phone) {
+      // Reopened and ended again before it went out: wait for the new summary
+      if (!tx.db.outbox.id.find(m.outboxId)?.sent) tx.db.outboxMeta.outboxId.update({ ...m, holdUntil: nowMs(tx) + FOLLOW_UP_WAIT_MS });
       return m.outboxId;
     }
   }
@@ -80,6 +82,7 @@ export function followUpText(tx: Tx, phone: string, conversationId: string | und
   const dropShort = prefsOf(tx, me.id)?.dropShortEncounters !== false;
   if (dropShort && together !== undefined && together < SHORT_ENCOUNTER_MS) return { drop: "short encounter" };
 
+  if (c.endedAt === undefined) return { hold: true }; // they came back together: wait until it ends
   const ready = hasSummary(c.summary);
   if (!ready && nowMs(tx) < (holdUntil ?? 0)) return { hold: true };
 
