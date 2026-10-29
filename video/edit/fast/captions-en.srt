@@ -1,0 +1,143 @@
+1
+00:00:02,850 --> 00:00:05,505
+Cal Hacks. Hundreds of people in one hangar,
+
+2
+00:00:05,505 --> 00:00:08,097
+and any one of them could change what you build.
+
+3
+00:00:08,117 --> 00:00:11,563
+Meeting people in person is still how teams and ideas start.
+
+4
+00:00:11,583 --> 00:00:15,463
+But while you talk to one person, you can't talk to anyone else.
+
+5
+00:00:15,483 --> 00:00:17,440
+So every hello is a gamble. In one study,
+
+6
+00:00:17,440 --> 00:00:20,944
+ninety five percent of guests wanted to meet new people,
+
+7
+00:00:20,944 --> 00:00:24,263
+yet half their conversations were with friends they already knew.
+
+8
+00:00:24,283 --> 00:00:25,930
+What if the room had a filter?
+
+9
+00:00:25,950 --> 00:00:29,398
+Meet the Human Human Interaction Lab. Your phone, on a lanyard,
+
+10
+00:00:29,398 --> 00:00:31,163
+becomes a live name badge.
+
+11
+00:00:31,183 --> 00:00:32,378
+You onboard by text.
+
+12
+00:00:32,378 --> 00:00:35,547
+Our iMessage agent asks who you are and who you want to meet,
+
+13
+00:00:35,547 --> 00:00:37,730
+then sends you its contact card.
+
+14
+00:00:37,750 --> 00:00:39,620
+Your badge shows your name, huge,
+
+15
+00:00:39,620 --> 00:00:42,097
+plus the topics people should ask you about.
+
+16
+00:00:42,117 --> 00:00:42,926
+Behind the scenes,
+
+17
+00:00:42,926 --> 00:00:45,410
+every pair of attendees is scored in both directions.
+
+18
+00:00:45,410 --> 00:00:47,463
+Only mutual matches light up.
+
+19
+00:00:47,483 --> 00:00:50,451
+Wear the badge and walk the room. As a match gets closer,
+
+20
+00:00:50,451 --> 00:00:51,959
+measured by Ultra Wideband,
+
+21
+00:00:51,959 --> 00:00:54,186
+both badges tint toward a shared color,
+
+22
+00:00:54,186 --> 00:00:57,230
+and the topics flip to what they want to talk to you about.
+
+23
+00:00:57,250 --> 00:00:59,153
+Within two meters, the avatars jump together,
+
+24
+00:00:59,153 --> 00:01:01,997
+and the conversation starts recording, with consent.
+
+25
+00:01:02,017 --> 00:01:02,913
+When you part ways,
+
+26
+00:01:02,913 --> 00:01:05,763
+you get a summary and a follow up you can send.
+
+27
+00:01:05,783 --> 00:01:08,063
+And everyone you met lives in your People list.
+
+28
+00:01:08,083 --> 00:01:08,795
+Under the hood,
+
+29
+00:01:08,795 --> 00:01:12,010
+the iPhone ranges nearby badges and syncs live to Convex,
+
+30
+00:01:12,010 --> 00:01:14,317
+with SpacetimeDB as a second backend.
+
+31
+00:01:14,317 --> 00:01:17,163
+Photon carries the conversation over iMessage.
+
+32
+00:01:17,183 --> 00:01:20,005
+TypeSafe's Jev rates every pair in half a second,
+
+33
+00:01:20,005 --> 00:01:21,753
+Claude writes why you should meet,
+
+34
+00:01:21,753 --> 00:01:25,463
+and a geometric mean makes one sided interest score low.
+
+35
+00:01:25,483 --> 00:01:29,730
+Every screen, avatar and sound was designed in Figma first.
+
+36
+00:01:29,750 --> 00:01:33,650
+Human Human Interaction Lab. Fewer gambles, better hellos.
